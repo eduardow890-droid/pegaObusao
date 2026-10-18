@@ -1,0 +1,12 @@
+{
+  "_aviso": "Exemplo montado à mão no formato esperado. Substitua por uma resposta real da SMTR.",
+  "data": [
+    {"id_veiculo": "A63001", "servico": "485", "latitude": "-22,9035", "longitude": "-43,2096", "velocidade": 22, "datetime": "2026-10-17T14:32:10Z"},
+    {"id_veiculo": "A63001", "servico": "485", "latitude": -22.9040, "longitude": -43.2100, "velocidade": 0, "datetime": "2026-10-17T14:32:40Z"},
+    {"id_veiculo": "A63002", "servico": "485", "latitude": -22.95, "longitude": -43.18, "velocidade": 35, "datetime": "2026-10-17T14:32:20Z"},
+    {"id_veiculo": "B11111", "servico": "232", "latitude": -22.90, "longitude": -43.20, "velocidade": 10, "datetime": "2026-10-17T14:32:20Z"},
+    {"id_veiculo": "A63003", "servico": "485", "latitude": null, "longitude": -43.2, "datetime": "2026-10-17T14:32:20Z"},
+    {"servico": "485", "latitude": -22.9, "longitude": -43.2, "datetime": "2026-10-17T14:32:20Z"}
+  ],
+  "next_cursor": null
+}

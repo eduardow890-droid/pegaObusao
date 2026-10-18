@@ -1,0 +1,11 @@
+{
+  "minuto_utc": "2026-10-17T14:32:00Z",
+  "data": [],
+  "next_cursor": null,
+  "providers_status": {
+    "conecta": "ok",
+    "maxtrack": "ok",
+    "sonda": "ok",
+    "zirix": "ok"
+  }
+}

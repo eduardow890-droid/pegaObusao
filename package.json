@@ -1,0 +1,13 @@
+{
+  "name": "onibus-rio",
+  "version": "0.1.0",
+  "description": "Mapa com ônibus do Rio em tempo real (dados abertos da Prefeitura + OpenStreetMap)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
