@@ -1,6 +1,11 @@
 "use strict";
 // Lógica de acesso à API da SMTR, separada do servidor para poder ser testada.
 
+const dns = require("node:dns");
+// Alguns ambientes de hospedagem anunciam IPv6, mas não possuem rota IPv6 de saída.
+// Preferir IPv4 evita que a conexão HTTPS externa falhe antes de chegar à SMTR.
+dns.setDefaultResultOrder("ipv4first");
+
 const PADRAO = {
   url: (process.env.GPS_URL || "https://its.mobilidade.rio/v1/geolocalizacao/veiculos").trim().replace(/^['"]|['"]$/g, ""),
   limite: 500, // registros por página
@@ -26,6 +31,12 @@ function num(v) {
   const texto = v.trim();
   if (!/^[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)$/.test(texto)) return NaN;
   return Number(texto.replace(",", "."));
+}
+
+function erroDeRede(erro) {
+  if (!erro) return new Error("Falha desconhecida ao acessar a API de GPS.");
+  if (erro.cause?.code) return new Error(`${erro.message} (${erro.cause.code})`);
+  return erro;
 }
 
 // Valida e normaliza um registro. Devolve null se estiver inválido.
@@ -84,7 +95,7 @@ async function buscarMinuto(linha, minuto, cfg) {
         if (resp.ok || (resp.status < 500 && resp.status !== 429)) break;
         falha = new Error(`GPS respondeu ${resp.status}`);
       } catch (erro) {
-        falha = erro;
+        falha = erroDeRede(erro);
       }
       if (tentativa < cfg.tentativas) await new Promise((resolver) => setTimeout(resolver, 300));
     }
