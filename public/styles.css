@@ -1,0 +1,170 @@
+  :root {
+    --baia: #0b2a43;       /* azul da Baía de Guanabara */
+    --baia-2: #123a5a;
+    --amarelo: #ffc20e;    /* amarelo de ônibus */
+    --areia: #fbf6ea;
+    --texto: #12212b;
+    --suave: #5b6b76;
+    --erro: #a32d1d;
+    --fonte: "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: var(--fonte); color: var(--texto); }
+  #mapa { position: absolute; inset: 0; }
+
+  /* Marca no topo */
+  .marca {
+    position: absolute; z-index: 2;
+    top: calc(12px + env(safe-area-inset-top, 0px)); left: 12px;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--baia); color: #fff; padding: 8px 16px 8px 8px;
+    border-radius: 999px; box-shadow: 0 6px 20px rgba(11, 42, 67, .4);
+  }
+  .marca svg { width: 40px; height: 40px; flex: none; }
+  .marca .nome { font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
+  .marca .nome b { color: var(--amarelo); font-weight: 800; }
+  .marca .slogan { display: block; font-size: .7rem; font-weight: 400; letter-spacing: .02em; color: #b9cad6; margin-top: 3px; }
+
+  /* Painel: cartão na lateral (desktop) ou gaveta embaixo (celular) */
+  .painel {
+    position: absolute; z-index: 2; background: var(--areia);
+    padding: 16px; box-shadow: 0 -6px 24px rgba(11, 42, 67, .3);
+    left: 0; right: 0; bottom: 0;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    border-radius: 22px 22px 0 0;
+  }
+  .painel::before {
+    content: ""; display: block; width: 44px; height: 5px; border-radius: 3px;
+    background: #cfc7b3; margin: -6px auto 12px;
+  }
+  .painel { transition: max-height .2s ease, transform .2s ease, opacity .2s ease; }
+  .painel-resumo { display: none; }
+  .resultado-cartao { display: grid; gap: 3px; margin-top: 10px; padding: 10px 12px; background: #fff3bd; border-left: 5px solid var(--amarelo); border-radius: 9px; }
+  .resultado-cartao[hidden] { display: none; }
+  .resultado-cartao strong { color: var(--baia); font-size: 1.35rem; }
+  .resultado-cartao span { font-size: .8rem; color: var(--suave); }
+  .contador { min-height: 1em; margin: 6px 0 0; font-size: .72rem; color: var(--suave); }
+  .secundarias button { min-width: 44px; min-height: 44px; font-size: 1.15rem; }
+  .ajustes { margin-top: 8px; font-size: .8rem; }
+  .ajustes summary, .secao summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 800; color: var(--baia); }
+  .ajustes select { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #9ba8af; border-radius: 8px; font: inherit; }
+  @media (min-width: 700px) {
+    .painel {
+      left: 12px; right: auto; bottom: auto; width: 360px;
+      top: calc(76px + env(safe-area-inset-top, 0px));
+      border-radius: 18px; box-shadow: 0 6px 24px rgba(11, 42, 67, .3); padding-bottom: 16px;
+    }
+    .painel::before { display: none; }
+    .painel.estado-oculto { width: 58px; padding: 7px; top: calc(76px + env(safe-area-inset-top, 0px)); left: 12px; border-radius: 14px; }
+    .painel.estado-oculto .alternar-painel { display: block; min-height: 44px; padding: 5px; }
+    .painel.estado-oculto .painel-resumo { display: none; }
+  }
+  label { display: block; font-weight: 700; font-size: .95rem; margin-bottom: 8px; }
+  .busca { display: flex; gap: 8px; }
+  input {
+    flex: 1; min-width: 0; padding: 12px 14px; font: inherit; font-size: 1.1rem; font-weight: 700;
+    border: 2px solid var(--baia); border-radius: 12px; background: #fff; color: var(--texto);
+  }
+  input::placeholder { font-weight: 400; color: #8a97a0; }
+  button {
+    font: inherit; font-weight: 800; cursor: pointer; border: 0; border-radius: 12px;
+  }
+  .busca button { padding: 12px 20px; font-size: 1.05rem; background: var(--amarelo); color: var(--baia); }
+  .busca button:active { transform: translateY(1px); }
+  .busca button:disabled { opacity: .65; cursor: wait; }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--baia); outline-offset: 2px; }
+
+  .exemplos { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; font-size: .85rem; color: var(--suave); }
+  .exemplos button { padding: 5px 12px; font-size: .9rem; background: #fff; color: var(--baia); border: 1.5px solid var(--baia); border-radius: 999px; }
+  .acoes { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+  .acoes button, .acoes select { padding: 7px 10px; background: #fff; color: var(--baia); border: 1px solid #9ba8af; border-radius: 9px; font: inherit; font-size: .82rem; }
+  .acoes button { cursor: pointer; }
+  .acoes button:disabled { opacity: .5; cursor: not-allowed; }
+  .favoritos { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .favoritos button { padding: 4px 9px; background: #fff3bd; color: var(--baia); border: 1px solid #d0a700; border-radius: 999px; }
+  .legenda { margin: 8px 0 0; font-size: .76rem; color: var(--suave); }
+  .secao { margin-top: 12px; padding-top: 10px; border-top: 1px solid #ddd3bd; }
+  .secao h2 { margin: 0 0 7px; font-size: .95rem; }
+  .campo { display: flex; gap: 6px; margin-top: 6px; }
+  .campo input { font-size: .9rem; padding: 8px 10px; border-width: 1px; }
+  .campo button { padding: 8px 10px; background: var(--baia); color: white; white-space: nowrap; }
+  .resultado { margin-top: 6px; max-height: 120px; overflow: auto; }
+  .resultado button { display: block; width: 100%; padding: 6px; text-align: left; background: white; color: var(--texto); border: 0; border-bottom: 1px solid #eee; font-size: .78rem; }
+  .resultado button:hover { background: #fff3bd; }
+  .sentido { margin-top: 10px; }
+  .sentido label { font-size: .85rem; margin-bottom: 5px; }
+  .sentido select { width: 100%; padding: 9px 10px; border: 2px solid var(--baia); border-radius: 10px; background: white; color: var(--texto); font: inherit; }
+  .oculto { display: none; }
+  .alternar-painel { display: none; }
+  .painel.estado-compacto > .exemplos,
+  .painel.estado-compacto > .secundarias,
+  .painel.estado-compacto > .favoritos,
+  .painel.estado-compacto > .ajustes,
+  .painel.estado-compacto > .contador,
+  .painel.estado-compacto > .legenda,
+  .painel.estado-compacto > .rodape,
+  .painel.estado-compacto > .secao { display: none; }
+  .painel.estado-compacto { max-height: 280px; overflow: hidden; }
+  .painel.estado-oculto { max-height: 58px; min-height: 58px; overflow: hidden; padding-top: 7px; padding-bottom: 7px; }
+  .painel.estado-oculto > :not(.alternar-painel):not(.painel-resumo) { display: none; }
+  .painel.estado-oculto .painel-resumo { display: block; position: absolute; left: 16px; right: 16px; bottom: 8px; text-align: center; color: var(--baia); font-size: .8rem; font-weight: 800; }
+  .painel.estado-oculto .alternar-painel { color: var(--baia); }
+
+  #status {
+    margin: 12px 0 0; padding: 10px 12px; font-size: .92rem; line-height: 1.35;
+    background: #fff; border-left: 5px solid var(--amarelo); border-radius: 8px; min-height: 2.6em;
+  }
+  #status.erro { border-left-color: var(--erro); color: var(--erro); font-weight: 700; }
+  .tentar { margin-top: 6px; padding: 8px 11px; background: var(--baia); color: #fff; }
+  .tentar[hidden] { display: none; }
+  .rodape { margin: 10px 0 0; font-size: .72rem; color: var(--suave); }
+
+  /* Ônibus no mapa */
+  .onibus {
+    width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--amarelo); border: 3px solid var(--baia); box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+  }
+  .onibus svg { width: 18px; height: 18px; }
+  .onibus.parado { background: #cfd6db; }
+  .onibus.antigo { opacity: .45; border-style: dashed; }
+  .onibus.destaque { outline: 4px solid #d44b2d; outline-offset: 2px; z-index: 3; }
+  .parada { width: 13px; height: 13px; border-radius: 50%; background: #ffffff; border: 3px solid var(--baia); box-shadow: 0 1px 5px rgba(0, 0, 0, .55); }
+  .secao > button { margin-top: 7px; padding: 9px 12px; background: var(--baia); color: #fff; }
+  .secao small { display: block; margin-top: 5px; color: var(--suave); }
+  .secao[open] summary { border-bottom: 1px solid #ddd3bd; margin-bottom: 8px; }
+
+  .maplibregl-ctrl-bottom-right { bottom: 0; }
+  @media (max-width: 699px) {
+    .marca { top: calc(8px + env(safe-area-inset-top, 0px)); left: 8px; padding: 5px 11px 5px 5px; gap: 7px; }
+    .marca img { width: 34px; height: 34px; }
+    .marca .nome { font-size: 1.05rem; }
+    .marca .slogan { font-size: .62rem; }
+    .painel { max-height: 42vh; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); }
+    .painel::before { margin: -3px auto 7px; }
+    .alternar-painel { display: block; width: 100%; min-height: 44px; padding: 8px; margin-bottom: 5px; background: var(--baia); color: white; font-size: .8rem; }
+    .painel.estado-compacto { max-height: 240px; }
+    .painel.estado-oculto { max-height: 62px; min-height: 62px; }
+    .painel label { font-size: .85rem; margin-bottom: 5px; }
+    .busca input { padding: 9px 10px; font-size: 1rem; }
+    .busca button { padding: 9px 15px; }
+    .acoes { margin-top: 7px; gap: 5px; }
+    .acoes button, .acoes select { padding: 6px 8px; font-size: .75rem; }
+    #status { margin-top: 8px; padding: 8px 9px; font-size: .82rem; }
+    .secao { margin-top: 8px; padding-top: 7px; }
+    .secao h2 { font-size: .85rem; }
+    .rodape { margin-top: 7px; }
+    .maplibregl-ctrl-bottom-right { bottom: calc(42vh + 8px); right: 8px; }
+    body.painel-compacto .maplibregl-ctrl-bottom-right { bottom: 248px; }
+    body.painel-oculto .maplibregl-ctrl-bottom-right { bottom: 8px; }
+    .resultado-cartao strong { font-size: 1.15rem; }
+    .secao { margin-top: 6px; padding-top: 5px; }
+    .campo { display: grid; grid-template-columns: 1fr auto; }
+    .campo input { width: 100%; }
+    .secao button { min-height: 44px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .painel { transition: none; } }
+  @media (prefers-color-scheme: dark) {
+    :root { --areia: #102f45; --texto: #f5f7f8; --suave: #c2d0d8; }
+    input, .sentido select, .acoes button, .acoes select, .resultado button, .ajustes select { background: #173d57; color: #fff; }
+    .resultado-cartao { background: #5c4b00; }
+  }

@@ -5,257 +5,82 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b2a43">
 <title>PegaObusão · ônibus do Rio ao vivo</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23ffc20e'/%3E%3Crect x='5' y='4' width='14' height='13' rx='3' fill='%230b2a43'/%3E%3Crect x='7' y='7' width='10' height='4' rx='1' fill='%23ffc20e'/%3E%3Ccircle cx='9' cy='14' r='1.2' fill='%23ffc20e'/%3E%3Ccircle cx='15' cy='14' r='1.2' fill='%23ffc20e'/%3E%3C/svg%3E">
+<link rel="icon" href="/icon.svg">
+<link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="/styles.css">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<style>
-  :root {
-    --baia: #0b2a43;       /* azul da Baía de Guanabara */
-    --baia-2: #123a5a;
-    --amarelo: #ffc20e;    /* amarelo de ônibus */
-    --areia: #fbf6ea;
-    --texto: #12212b;
-    --suave: #5b6b76;
-    --erro: #a32d1d;
-    --fonte: "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; font-family: var(--fonte); color: var(--texto); }
-  #mapa { position: absolute; inset: 0; }
-
-  /* Marca no topo */
-  .marca {
-    position: absolute; z-index: 2;
-    top: calc(12px + env(safe-area-inset-top, 0px)); left: 12px;
-    display: flex; align-items: center; gap: 10px;
-    background: var(--baia); color: #fff; padding: 8px 16px 8px 8px;
-    border-radius: 999px; box-shadow: 0 6px 20px rgba(11, 42, 67, .4);
-  }
-  .marca svg { width: 40px; height: 40px; flex: none; }
-  .marca .nome { font-size: 1.3rem; font-weight: 800; letter-spacing: -.02em; line-height: 1; }
-  .marca .nome b { color: var(--amarelo); font-weight: 800; }
-  .marca .slogan { display: block; font-size: .7rem; font-weight: 400; letter-spacing: .02em; color: #b9cad6; margin-top: 3px; }
-
-  /* Painel: cartão na lateral (desktop) ou gaveta embaixo (celular) */
-  .painel {
-    position: absolute; z-index: 2; background: var(--areia);
-    padding: 16px; box-shadow: 0 -6px 24px rgba(11, 42, 67, .3);
-    left: 0; right: 0; bottom: 0;
-    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    border-radius: 22px 22px 0 0;
-  }
-  .painel::before {
-    content: ""; display: block; width: 44px; height: 5px; border-radius: 3px;
-    background: #cfc7b3; margin: -6px auto 12px;
-  }
-  @media (min-width: 700px) {
-    .painel {
-      left: 12px; right: auto; bottom: auto; width: 360px;
-      top: calc(76px + env(safe-area-inset-top, 0px));
-      border-radius: 18px; box-shadow: 0 6px 24px rgba(11, 42, 67, .3); padding-bottom: 16px;
-    }
-    .painel::before { display: none; }
-  }
-  label { display: block; font-weight: 700; font-size: .95rem; margin-bottom: 8px; }
-  .busca { display: flex; gap: 8px; }
-  input {
-    flex: 1; min-width: 0; padding: 12px 14px; font: inherit; font-size: 1.1rem; font-weight: 700;
-    border: 2px solid var(--baia); border-radius: 12px; background: #fff; color: var(--texto);
-  }
-  input::placeholder { font-weight: 400; color: #8a97a0; }
-  button {
-    font: inherit; font-weight: 800; cursor: pointer; border: 0; border-radius: 12px;
-  }
-  .busca button { padding: 12px 20px; font-size: 1.05rem; background: var(--amarelo); color: var(--baia); }
-  .busca button:active { transform: translateY(1px); }
-  button:focus-visible, input:focus-visible { outline: 3px solid var(--baia); outline-offset: 2px; }
-
-  .exemplos { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; font-size: .85rem; color: var(--suave); }
-  .exemplos button { padding: 5px 12px; font-size: .9rem; background: #fff; color: var(--baia); border: 1.5px solid var(--baia); border-radius: 999px; }
-
-  #status {
-    margin: 12px 0 0; padding: 10px 12px; font-size: .92rem; line-height: 1.35;
-    background: #fff; border-left: 5px solid var(--amarelo); border-radius: 8px; min-height: 2.6em;
-  }
-  #status.erro { border-left-color: var(--erro); color: var(--erro); font-weight: 700; }
-  .rodape { margin: 10px 0 0; font-size: .72rem; color: var(--suave); }
-
-  /* Ônibus no mapa */
-  .onibus {
-    width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
-    background: var(--amarelo); border: 3px solid var(--baia); box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
-  }
-  .onibus svg { width: 18px; height: 18px; }
-  .onibus.parado { background: #cfd6db; }
-  .onibus.antigo { opacity: .45; border-style: dashed; }
-
-  .maplibregl-ctrl-bottom-right { bottom: 0; }
-  @media (max-width: 699px) { .maplibregl-ctrl-bottom-right { bottom: 190px; } }
-</style>
 </head>
 <body>
 <div id="mapa"></div>
 
 <header class="marca" aria-label="PegaObusão">
-  <svg viewBox="0 0 40 40" aria-hidden="true">
-    <rect width="40" height="40" rx="11" fill="#ffc20e"/>
-    <rect x="9" y="7" width="22" height="22" rx="5" fill="#0b2a43"/>
-    <rect x="12" y="11" width="16" height="7" rx="2" fill="#ffc20e"/>
-    <circle cx="15" cy="23.5" r="2" fill="#ffc20e"/>
-    <circle cx="25" cy="23.5" r="2" fill="#ffc20e"/>
-    <rect x="12" y="29" width="5" height="4" rx="1.5" fill="#0b2a43"/>
-    <rect x="23" y="29" width="5" height="4" rx="1.5" fill="#0b2a43"/>
-  </svg>
+  <img src="/icon.svg" alt="" width="40" height="40">
   <div class="nome">Pega<b>Obusão</b><span class="slogan">ônibus do Rio ao vivo</span></div>
 </header>
 
-<form class="painel" id="form">
-  <label for="linha">Qual linha você quer pegar?</label>
-  <div class="busca">
-    <input id="linha" inputmode="text" autocomplete="off" autocapitalize="characters" placeholder="Ex.: 485">
-    <button type="submit">Ver</button>
+<form class="painel estado-aberto" id="form" aria-label="Consulta de ônibus">
+  <button type="button" class="alternar-painel" id="alternar-painel" aria-expanded="true" aria-controls="form">⌄ Ocultar painel</button>
+  <span class="painel-resumo" id="painel-resumo" aria-live="polite"></span>
+  <div class="principal">
+    <label for="linha">Qual linha você quer pegar?</label>
+    <div class="busca">
+      <input id="linha" inputmode="text" autocomplete="off" autocapitalize="characters" placeholder="Ex.: 485">
+      <button type="submit">Ver</button>
+    </div>
+    <div id="resultado-card" class="resultado-cartao" hidden aria-live="polite">
+      <strong id="estimativa">Estimativa indisponível</strong>
+      <span id="resultado-linha"></span>
+      <span id="resultado-parada"></span>
+      <span id="resultado-detalhe"></span>
+    </div>
   </div>
   <div class="exemplos">Experimente:
     <button type="button" data-linha="349">349</button>
     <button type="button" data-linha="485">485</button>
     <button type="button" data-linha="232">232</button>
   </div>
+  <div id="sentido" class="sentido oculto">
+    <label for="sentido-select">Para qual direção o ônibus está indo?</label>
+    <select id="sentido-select" disabled><option value="">Escolha um destino</option></select>
+  </div>
+  <div class="acoes secundarias" aria-label="Ações">
+    <button type="button" id="localizacao" aria-label="Mostrar minha localização">◎</button>
+    <button type="button" id="atualizar" disabled aria-label="Atualizar agora">↻</button>
+    <button type="button" id="compartilhar" aria-label="Compartilhar esta linha">↗</button>
+    <button type="button" id="favoritar" disabled aria-label="Favoritar linha">☆</button>
+  </div>
+  <div id="favoritos" class="favoritos" aria-label="Linhas favoritas"></div>
+  <details class="ajustes">
+    <summary>Ajustes</summary>
+    <label for="intervalo">Atualização automática</label>
+    <select id="intervalo"><option value="15000">A cada 15 s</option><option value="30000">A cada 30 s</option><option value="60000">A cada 1 min</option></select>
+  </details>
+  <p class="contador" id="contador" aria-live="polite"></p>
   <p id="status" role="status">Digite o número da linha para ver os ônibus no mapa.</p>
+  <button type="button" id="tentar-novamente" class="tentar" hidden>Tentar novamente</button>
+  <p class="legenda">Clique em um ônibus ou parada para ver detalhes.</p>
+  <details class="secao">
+    <summary>Encontrar endereço e paradas</summary>
+    <label for="endereco">Endereço</label>
+    <div class="campo"><input id="endereco" placeholder="Ex.: Central do Brasil"><button type="button" id="buscar-endereco">Buscar</button></div>
+    <div id="enderecos" class="resultado" aria-live="polite"></div>
+    <button type="button" id="buscar-paradas" disabled>Mostrar paradas próximas</button>
+    <small id="ajuda-paradas">Escolha um endereço ou use sua localização para ativar.</small>
+  </details>
+  <details class="secao">
+    <summary>Planejar rota</summary>
+    <label for="origem">Origem</label>
+    <div class="campo"><input id="origem" placeholder="Digite a origem"><button type="button" id="usar-localizacao">Usar minha localização</button></div>
+    <label for="destino">Destino</label>
+    <div class="campo"><input id="destino" placeholder="Digite o destino"></div>
+    <button type="button" id="trocar-rota">↕ Trocar origem e destino</button>
+    <button type="button" id="planejar">Traçar rota</button>
+    <div id="rota-status" class="legenda" aria-live="polite"></div>
+  </details>
   <p class="rodape">Dados: Prefeitura do Rio (SMTR) · Mapa: OpenStreetMap</p>
 </form>
 
-<script>
-  const mapa = new maplibregl.Map({
-    container: "mapa",
-    center: [-43.2096, -22.9035], // Rio de Janeiro
-    zoom: 11,
-    style: {
-      version: 8,
-      sources: {
-        osm: {
-          type: "raster",
-          tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-          tileSize: 256,
-          attribution: "© Colaboradores do OpenStreetMap",
-        },
-      },
-      layers: [{ id: "osm", type: "raster", source: "osm" }],
-    },
-  });
-  mapa.addControl(new maplibregl.NavigationControl(), "bottom-right");
-
-  const ICONE_ONIBUS =
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="15" rx="3" fill="#0b2a43"/>' +
-    '<rect x="6" y="6" width="12" height="5" rx="1" fill="#ffc20e"/><circle cx="8.5" cy="14.5" r="1.3" fill="#ffc20e"/>' +
-    '<circle cx="15.5" cy="14.5" r="1.3" fill="#ffc20e"/><rect x="6" y="18" width="3" height="3" rx="1" fill="#0b2a43"/>' +
-    '<rect x="15" y="18" width="3" height="3" rx="1" fill="#0b2a43"/></svg>';
-
-  const statusEl = document.getElementById("status");
-  let marcadores = [];
-  let sequencia = 0;       // muda a cada nova busca de linha: respostas antigas são ignoradas
-  let controlador = null;  // permite cancelar a requisição em andamento
-  let timer = null;
-  let primeiraVez = true;
-  let ultimaBoa = null;    // hora da última atualização bem-sucedida
-
-  const hhmm = (d) => d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-
-  function limpar() {
-    marcadores.forEach((m) => m.remove());
-    marcadores = [];
-  }
-
-  function mostrar(texto, erro) {
-    statusEl.textContent = texto;
-    statusEl.classList.toggle("erro", !!erro);
-  }
-
-  // Margens do enquadramento: deixa o painel e a marca livres
-  function margens() {
-    return innerWidth >= 700
-      ? { top: 60, bottom: 60, left: 420, right: 60 }
-      : { top: 90, bottom: 250, left: 40, right: 40 };
-  }
-
-  function desenhar(dados, linha) {
-    limpar();
-    ultimaBoa = new Date();
-    if (dados.total === 0) {
-      mostrar(`Nenhum ônibus da linha ${linha} circulando agora.`);
-      return;
-    }
-    const limites = new maplibregl.LngLatBounds();
-    dados.onibus.forEach((o) => {
-      const el = document.createElement("div");
-      el.className = "onibus" + (o.velocidade < 1 ? " parado" : "");
-      el.title = `Ordem ${o.ordem} · ${Math.round(o.velocidade)} km/h`;
-      el.innerHTML = ICONE_ONIBUS;
-      marcadores.push(new maplibregl.Marker({ element: el }).setLngLat([o.lng, o.lat]).addTo(mapa));
-      limites.extend([o.lng, o.lat]);
-    });
-    if (primeiraVez) {
-      mapa.fitBounds(limites, { padding: margens(), maxZoom: 15 });
-      primeiraVez = false;
-    }
-    // Avisa se o GPS mais recente já está velho
-    const maisNovo = Math.max(...dados.onibus.map((o) => o.hora || 0));
-    const idadeMin = maisNovo ? Math.round((Date.now() - maisNovo) / 60000) : 0;
-    const aviso = idadeMin >= 3 ? ` Atenção: o sinal mais recente tem ${idadeMin} min.` : "";
-    mostrar(`${dados.total} ônibus da linha ${linha}. Atualizado às ${hhmm(ultimaBoa)}.${aviso}`, idadeMin >= 3);
-  }
-
-  async function atualizar(linha, seq) {
-    const meu = new AbortController();
-    controlador = meu;
-    const prazo = setTimeout(() => meu.abort(), 10000);
-    try {
-      const r = await fetch("/api/onibus?linha=" + encodeURIComponent(linha), { signal: meu.signal });
-      const dados = await r.json().catch(() => ({}));
-      if (seq !== sequencia) return; // o usuário já trocou de linha
-      if (!r.ok) throw new Error(dados.erro || "Falha ao buscar ônibus.");
-      desenhar(dados, linha);
-    } catch (e) {
-      if (seq !== sequencia) return;
-      // Marcadores antigos ficam esmaecidos para não parecerem atuais
-      marcadores.forEach((m) => m.getElement().classList.add("antigo"));
-      const quando = ultimaBoa ? ` Última posição boa: ${hhmm(ultimaBoa)} (ônibus esmaecidos).` : "";
-      const motivo = e.name === "AbortError" ? "Tempo esgotado." : e.message;
-      mostrar(`⚠ Não consegui atualizar. ${motivo}${quando}`, true);
-    } finally {
-      clearTimeout(prazo);
-    }
-  }
-
-  // Uma consulta por vez: a próxima só começa 15 s depois de a anterior terminar.
-  async function ciclo(linha, seq) {
-    while (seq === sequencia) {
-      await atualizar(linha, seq);
-      if (seq !== sequencia) return;
-      await new Promise((ok) => { timer = setTimeout(ok, 15000); });
-    }
-  }
-
-  function buscar(valor) {
-    valor = valor.trim();
-    if (!valor) return;
-    document.getElementById("linha").value = valor;
-    sequencia += 1;
-    clearTimeout(timer);
-    controlador?.abort();
-    limpar();
-    ultimaBoa = null;
-    primeiraVez = true;
-    mostrar("Buscando…");
-    ciclo(valor, sequencia);
-  }
-
-  document.getElementById("form").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    buscar(document.getElementById("linha").value);
-  });
-  document.querySelectorAll("[data-linha]").forEach((b) =>
-    b.addEventListener("click", () => buscar(b.dataset.linha))
-  );
-</script>
+<script src="/app.js"></script>
 </body>
 </html>

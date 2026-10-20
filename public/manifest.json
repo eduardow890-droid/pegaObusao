@@ -1,0 +1,12 @@
+{
+  "name": "PegaObusão",
+  "short_name": "PegaObusão",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbf6ea",
+  "theme_color": "#0b2a43",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -5,7 +5,9 @@ const PADRAO = {
   url: process.env.GPS_URL || "https://its.mobilidade.rio/v1/geolocalizacao/veiculos",
   limite: 500, // registros por página
   maxPaginas: 10, // trava de segurança contra paginação infinita
-  timeoutMs: 8000, // prazo de cada chamada à SMTR
+  timeoutMs: Number(process.env.GPS_TIMEOUT_MS || 15_000), // prazo de cada chamada à SMTR
+  tentativas: 2,
+  maxIdadeMs: Number(process.env.MAX_IDADE_ONIBUS_MS || 180_000),
   fetch: (...args) => fetch(...args),
   agora: () => new Date(),
 };
@@ -43,6 +45,11 @@ function normalizar(o) {
     lat,
     lng,
     velocidade: num(o.velocidade) || 0,
+    destino: String(o.destino ?? o.destination ?? o.sentido ?? o.direcao ?? "").trim(),
+    sentido: String(o.sentido ?? o.direcao ?? "").trim(),
+    tripId: String(o.trip_id ?? o.tripId ?? "").trim(),
+    routeId: String(o.route_id ?? o.routeId ?? "").trim(),
+    directionId: String(o.direction_id ?? o.directionId ?? "").trim(),
     hora: Number.isFinite(hora) ? hora : 0,
   };
 }
@@ -66,7 +73,22 @@ async function buscarMinuto(linha, minuto, cfg) {
     url.searchParams.set("limit", String(cfg.limite));
     if (cursor) url.searchParams.set("cursor", cursor);
 
-    const resp = await cfg.fetch(url, { signal: AbortSignal.timeout(cfg.timeoutMs) });
+    let resp;
+    let falha;
+    for (let tentativa = 1; tentativa <= cfg.tentativas; tentativa += 1) {
+      try {
+        resp = await cfg.fetch(url, {
+          headers: { Accept: "application/json", "User-Agent": "PegaObusao/1.0" },
+          signal: AbortSignal.timeout(cfg.timeoutMs),
+        });
+        if (resp.ok || (resp.status < 500 && resp.status !== 429)) break;
+        falha = new Error(`GPS respondeu ${resp.status}`);
+      } catch (erro) {
+        falha = erro;
+      }
+      if (tentativa < cfg.tentativas) await new Promise((resolver) => setTimeout(resolver, 300));
+    }
+    if (!resp) throw falha || new Error("Não foi possível conectar à API de GPS.");
     if (!resp.ok) throw new Error(`GPS respondeu ${resp.status}`);
     const bruto = await resp.json();
     registros.push(...extrairLista(bruto));
@@ -100,7 +122,9 @@ async function carregarOnibus(linha, deps = {}) {
       if (!atual || o.hora > atual.hora) maisRecente.set(o.ordem, o);
     }
   }
-  return [...maisRecente.values()];
+  return [...maisRecente.values()].filter((onibus) => (
+    onibus.hora > 0 && agora.getTime() - onibus.hora <= cfg.maxIdadeMs
+  ));
 }
 
 module.exports = { minutoUtc, normalizar, extrairLista, buscarMinuto, carregarOnibus, PADRAO };

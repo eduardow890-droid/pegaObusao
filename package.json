@@ -1,13 +1,21 @@
 {
-  "name": "onibus-rio",
+  "name": "pegaobusao",
   "version": "0.1.0",
   "description": "Mapa com ônibus do Rio em tempo real (dados abertos da Prefeitura + OpenStreetMap)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "start:rede": "HOST=0.0.0.0 node server.js",
+    "test": "node --test",
+    "check": "node --check server.js && node --check lib.js && node --check servicos.js && node --check gtfs.js && node --check chegada.js && node --check public/app.js && node --check scripts/importar-gtfs.js && node --check scripts/atualizar-gtfs.js && node --check scripts/agendar-gtfs.js",
+    "importar-gtfs": "node scripts/importar-gtfs.js",
+    "atualizar-gtfs": "node scripts/atualizar-gtfs.js",
+    "agendar-gtfs": "node scripts/agendar-gtfs.js"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "csv-parse": "^7.0.3"
   }
 }

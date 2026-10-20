@@ -86,3 +86,129 @@ test("erro da API retorna mensagem segura e status 502", async () => {
     assert.equal(JSON.stringify(dados).includes("confidencial"), false);
   });
 });
+
+test("healthcheck e métricas retornam estado operacional", async () => {
+  await comServidor({}, async (base) => {
+    const health = await fetch(`${base}/healthz`);
+    const dadosHealth = await health.json();
+    assert.equal(health.status, 200);
+    assert.equal(dadosHealth.status, "ok");
+
+    const metrics = await fetch(`${base}/metrics`);
+    const dadosMetrics = await metrics.json();
+    assert.equal(metrics.status, 200);
+    assert.ok(dadosMetrics.requisicoes >= 2);
+    assert.equal(typeof dadosMetrics.cacheLinhas, "number");
+  });
+});
+
+test("aplica rate limiting por endereço", async () => {
+  await comServidor({ buscarOnibus: async () => [], rateLimitMax: 1, rateLimitWindowMs: 60_000 }, async (base) => {
+    const primeira = await fetch(`${base}/api/onibus?linha=485`);
+    const segunda = await fetch(`${base}/api/onibus?linha=232`);
+    assert.equal(primeira.status, 200);
+    assert.equal(segunda.status, 429);
+    assert.ok(segunda.headers.get("retry-after"));
+  });
+});
+
+test("serve a página inicial e bloqueia caminho fora de public", async () => {
+  await comServidor({}, async (base) => {
+    const pagina = await fetch(`${base}/`);
+    assert.equal(pagina.status, 200);
+    assert.match(await pagina.text(), /PegaObusão/);
+    const icone = await fetch(`${base}/icon.svg`);
+    assert.equal(icone.status, 200);
+    assert.match(icone.headers.get("content-type"), /image\/svg\+xml/);
+
+    const fora = await fetch(`${base}/%2e%2e%2fserver.js`);
+    assert.equal(fora.status, 403);
+  });
+});
+
+test("endpoints de endereço, paradas e rota validam e encaminham dados", async () => {
+  await comServidor({
+    buscarEndereco: async (q) => [{ nome: q, lat: -22.9, lng: -43.2 }],
+    buscarParadasProximas: async (lat, lng, raio) => [{ nome: "Parada teste", lat, lng, raio }],
+    calcularRotaExterna: async (origem, destino) => ({ distanciaMetros: 1000, duracaoSegundos: 600, geometria: { type: "LineString", coordinates: [[origem.lng, origem.lat], [destino.lng, destino.lat]] } }),
+  }, async (base) => {
+    const endereco = await fetch(`${base}/api/endereco?q=Central`);
+    assert.deepEqual(await endereco.json(), [{ nome: "Central", lat: -22.9, lng: -43.2 }]);
+
+    const paradas = await fetch(`${base}/api/paradas?lat=-22.9&lng=-43.2`);
+    assert.equal((await paradas.json())[0].nome, "Parada teste");
+
+    const rota = await fetch(`${base}/api/rota?origemLat=-22.9&origemLng=-43.2&destinoLat=-22.8&destinoLng=-43.1`);
+    assert.equal((await rota.json()).distanciaMetros, 1000);
+
+    const invalida = await fetch(`${base}/api/paradas?lat=999&lng=-43.2`);
+    assert.equal(invalida.status, 400);
+  });
+});
+
+test("endpoint de linha retorna dados GTFS e trata linha inexistente", async () => {
+  const buscarLinhaGtfs = (linha) => linha === "485"
+    ? { linha, variantes: [{ destino: "Destino teste", paradas: [{ id: "P1" }], rota: { type: "LineString", coordinates: [] } }] }
+    : null;
+  await comServidor({ buscarLinhaGtfs, rateLimitMax: 100 }, async (base) => {
+    const ok = await fetch(`${base}/api/linha?linha=485`);
+    const dados = await ok.json();
+    assert.equal(ok.status, 200);
+    assert.equal(dados.variantes[0].destino, "Destino teste");
+
+    const ausente = await fetch(`${base}/api/linha?linha=999`);
+    assert.equal(ausente.status, 404);
+  });
+});
+
+test("endpoint de previsão usa linha, variante e ônibus injetados", async () => {
+  await comServidor({
+    buscarLinhaGtfs: () => ({ linha: "485", variantes: [{ destino: "Teste" }] }),
+    buscarOnibus: async () => [{ ordem: "A1", hora: Date.now(), lat: -22.9, lng: -43.2, velocidade: 20 }],
+    rateLimitMax: 100,
+  }, async (base) => {
+    const previsaoLocal = await fetch(`${base}/api/previsao?linha=485&variante=0`);
+    assert.equal(previsaoLocal.status, 200);
+    assert.equal((await previsaoLocal.json()).estimativa, "aproximada");
+  });
+});
+
+test("endpoint de chegada valida localização e encaminha cálculo", async () => {
+  await comServidor({
+    buscarLinhaGtfs: () => ({ linha: "485", variantes: [{ destino: "Teste" }] }),
+    buscarOnibus: async () => [],
+    calcularChegadaGtfs: (linha, variante, onibus, localizacao) => ({ disponivel: true, linha: linha.linha, variante, total: onibus.length, localizacao }),
+    rateLimitMax: 100,
+  }, async (base) => {
+    const ok = await fetch(`${base}/api/chegada?linha=485&variante=0&lat=-22.9&lng=-43.2`);
+    assert.equal(ok.status, 200);
+    assert.deepEqual((await ok.json()).localizacao, { lat: -22.9, lng: -43.2 });
+    const invalida = await fetch(`${base}/api/chegada?linha=485&variante=0&lat=0&lng=0`);
+    assert.equal(invalida.status, 400);
+  });
+});
+
+test("rejeita parâmetros ausentes, vazios, fora do Rio e raio inválido", async () => {
+  let chamadas = 0;
+  const contar = async () => (chamadas++, []);
+  await comServidor({ buscarParadasProximas: contar, calcularRotaExterna: contar, rateLimitMax: 100 }, async (base) => {
+    const urls = [
+      "/api/paradas",                                  // sem lat/lng (antes virava 0,0)
+      "/api/paradas?lat=&lng=",                         // vazios
+      "/api/paradas?lat=0&lng=0",                       // fora do Rio
+      "/api/paradas?lat=40.7&lng=-74",                  // outra cidade
+      "/api/paradas?lat=-22.9&lng=-43.2&raio=abc",      // raio inválido (antes passava como NaN)
+      "/api/paradas?lat=-22.9&lng=-43.2&raio=50",
+      "/api/paradas?lat=-22.9&lng=-43.2&raio=5000",
+      "/api/rota",
+      "/api/rota?origemLat=-22.9&origemLng=-43.2&destinoLat=0&destinoLng=0",
+    ];
+    for (const u of urls) {
+      const r = await fetch(`${base}${u}`);
+      assert.equal(r.status, 400, u);
+    }
+    assert.equal(chamadas, 0);
+    const ok = await fetch(`${base}/api/paradas?lat=-22.9&lng=-43.2`);
+    assert.equal(ok.status, 200);
+  });
+});
