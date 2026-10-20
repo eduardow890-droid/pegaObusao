@@ -462,7 +462,9 @@
     const meu = new AbortController();
     controlador = meu;
     buscarBtn.disabled = true;
-    const prazo = setTimeout(() => meu.abort(), 10000);
+    // O backend pode fazer duas tentativas de até 15 s na API da SMTR.
+    // O navegador precisa aguardar mais que esse ciclo antes de cancelar.
+    const prazo = setTimeout(() => meu.abort(), 35_000);
     try {
       const r = await fetch("/api/onibus?linha=" + encodeURIComponent(linha), { signal: meu.signal });
       const dados = await r.json().catch(() => ({}));

@@ -50,6 +50,7 @@ O endpoint de GPS possui rate limiting por IP. Os valores padrão são 60 consul
 podem ser ajustados com `RATE_LIMIT_MAX` e `RATE_LIMIT_WINDOW_MS`.
 O acesso à SMTR usa até duas tentativas e 15 segundos por chamada; ajuste com `GPS_TIMEOUT_MS`
 se o provedor de hospedagem tiver latência maior.
+O navegador aguarda até 35 segundos pela resposta do GPS para não cancelar a segunda tentativa do servidor.
 
 ## API usada
 
