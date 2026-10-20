@@ -156,6 +156,7 @@
   function mostrar(texto, erro) {
     statusEl.textContent = texto;
     statusEl.classList.toggle("erro", !!erro);
+    statusEl.classList.toggle("secundario", !!linhaAtual);
     tentarBtn.hidden = !erro || !linhaAtual;
     if (resultadoCardEl && linhaAtual) {
       mostrarResultado(linhaAtual, texto);

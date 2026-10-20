@@ -63,6 +63,8 @@ function criarServidor({
   const limites = new Map(); // IP -> { inicio, quantidade }
   let requisicoes = 0;
   let erros = 0;
+  let gpsUltimaConsulta = null;
+  let gpsUltimoErro = null;
 
   function permitido(ip) {
     const instante = agora();
@@ -117,11 +119,15 @@ function criarServidor({
 
     if (url.pathname === "/healthz") {
       const gtfs = statusGtfs();
-      return json(res, gtfs.disponivel ? 200 : 503, { status: gtfs.disponivel ? "ok" : "degradado", requisicoes, erros, gtfs });
+      return json(res, gtfs.disponivel && !gpsUltimoErro ? 200 : 503, {
+        status: gtfs.disponivel && !gpsUltimoErro ? "ok" : "degradado",
+        requisicoes, erros, gtfs,
+        gps: { ultimaConsulta: gpsUltimaConsulta, ultimoErro: gpsUltimoErro },
+      });
     }
 
     if (url.pathname === "/metrics") {
-      return json(res, 200, { requisicoes, erros, cacheLinhas: cache.size, consultasPendentes: pendentes.size });
+      return json(res, 200, { requisicoes, erros, cacheLinhas: cache.size, consultasPendentes: pendentes.size, gps: { ultimaConsulta: gpsUltimaConsulta, ultimoErro: gpsUltimoErro } });
     }
 
     if (url.pathname === "/api/onibus") {
@@ -137,9 +143,13 @@ function criarServidor({
       }
       try {
         const { em, onibus } = await onibusDaLinha(linha);
+        gpsUltimaConsulta = new Date().toISOString();
+        gpsUltimoErro = null;
         return json(res, 200, { linha, total: onibus.length, atualizadoEm: new Date(em).toISOString(), onibus });
       } catch (e) {
         erros += 1;
+        gpsUltimaConsulta = new Date().toISOString();
+        gpsUltimoErro = e?.message || "erro desconhecido";
         logger.error(`Falha ao ler o GPS (linha ${linha}):`, e); // detalhe só no log do servidor
         return json(res, 502, { erro: "Serviço de GPS indisponível no momento. Tente de novo em instantes." });
       }

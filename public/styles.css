@@ -115,6 +115,7 @@
     background: #fff; border-left: 5px solid var(--amarelo); border-radius: 8px; min-height: 2.6em;
   }
   #status.erro { border-left-color: var(--erro); color: var(--erro); font-weight: 700; }
+  #status.secundario { display: none; }
   .tentar { margin-top: 6px; padding: 8px 11px; background: var(--baia); color: #fff; }
   .tentar[hidden] { display: none; }
   .rodape { margin: 10px 0 0; font-size: .72rem; color: var(--suave); }
@@ -164,7 +165,13 @@
   }
   @media (prefers-reduced-motion: reduce) { .painel { transition: none; } }
   @media (prefers-color-scheme: dark) {
-    :root { --areia: #102f45; --texto: #f5f7f8; --suave: #c2d0d8; }
+    :root { --baia: #8bd3ff; --baia-2: #1d5277; --areia: #102f45; --texto: #f5f7f8; --suave: #c2d0d8; --erro: #ff9d8f; }
+    .marca { background: #071d2d; }
+    .busca button, .campo button, .secao > button, .tentar { color: #062337; }
+    .campo button, .secao > button, .tentar { background: #8bd3ff; }
+    .acoes button, .acoes select { border-color: #7da8bd; }
+    .ajustes summary, .secao summary { color: #8bd3ff; }
+    .secao[open] summary { border-color: #416176; }
     input, .sentido select, .acoes button, .acoes select, .resultado button, .ajustes select { background: #173d57; color: #fff; }
     .resultado-cartao { background: #5c4b00; }
   }

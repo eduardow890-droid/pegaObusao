@@ -2,7 +2,7 @@
 // Lógica de acesso à API da SMTR, separada do servidor para poder ser testada.
 
 const PADRAO = {
-  url: process.env.GPS_URL || "https://its.mobilidade.rio/v1/geolocalizacao/veiculos",
+  url: (process.env.GPS_URL || "https://its.mobilidade.rio/v1/geolocalizacao/veiculos").trim().replace(/^['"]|['"]$/g, ""),
   limite: 500, // registros por página
   maxPaginas: 10, // trava de segurança contra paginação infinita
   timeoutMs: Number(process.env.GPS_TIMEOUT_MS || 15_000), // prazo de cada chamada à SMTR
