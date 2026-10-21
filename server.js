@@ -7,7 +7,7 @@ const path = require("path");
 const os = require("os");
 const { carregarOnibus } = require("./lib");
 const { buscarEnderecos, buscarParadas, calcularRota } = require("./servicos");
-const { buscarLinha, statusGtfs, previsao, chegada } = require("./gtfs");
+const { buscarLinha, statusGtfs, previsao, chegada, buscarParadasLocais } = require("./gtfs");
 const { atender: atenderGtfs } = require("./rotas/gtfs");
 const { atender: atenderServicos } = require("./rotas/servicos");
 
@@ -17,6 +17,7 @@ const CACHE_MS = 15_000;
 const CACHE_MAX = 100;
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 60);
 const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
+const CONFIAR_PROXY = process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true";
 
 // Caixa aproximada da região do Rio: evita usar o servidor como roteador para o mundo todo.
 const dentroDoRio = (p) => p.lat >= -23.2 && p.lat <= -22.6 && p.lng >= -43.9 && p.lng <= -42.9;
@@ -28,6 +29,11 @@ function numero(valor) {
 }
 
 const tipos = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json; charset=utf-8" };
+
+async function buscarParadasDaFonte(lat, lng, raio) {
+  try { return buscarParadasLocais(lat, lng, raio); }
+  catch { return buscarParadas(lat, lng, raio); }
+}
 
 function json(res, status, corpo) {
   res.writeHead(status, {
@@ -44,10 +50,18 @@ function cabecalhosSeguros(res) {
   res.setHeader("Permissions-Policy", "geolocation=(self)");
 }
 
+function ipCliente(req) {
+  if (CONFIAR_PROXY) {
+    const encaminhado = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+    if (encaminhado) return encaminhado;
+  }
+  return req.socket.remoteAddress || "desconhecido";
+}
+
 function criarServidor({
   buscarOnibus = carregarOnibus,
   buscarEndereco = buscarEnderecos,
-  buscarParadasProximas = buscarParadas,
+  buscarParadasProximas = buscarParadasDaFonte,
   calcularRotaExterna = calcularRota,
   buscarLinhaGtfs = buscarLinha,
   calcularChegadaGtfs = chegada,
@@ -119,7 +133,7 @@ function criarServidor({
 
     if (url.pathname === "/healthz") {
       const gtfs = statusGtfs();
-      return json(res, gtfs.disponivel && !gpsUltimoErro ? 200 : 503, {
+      return json(res, 200, {
         status: gtfs.disponivel && !gpsUltimoErro ? "ok" : "degradado",
         requisicoes, erros, gtfs,
         gps: { ultimaConsulta: gpsUltimaConsulta, ultimoErro: gpsUltimoErro },
@@ -132,7 +146,7 @@ function criarServidor({
 
     if (url.pathname === "/api/onibus") {
       if (req.method !== "GET") return json(res, 405, { erro: "Método não permitido." });
-      const ip = req.socket.remoteAddress || "desconhecido";
+      const ip = ipCliente(req);
       if (!permitido(ip)) {
         res.setHeader("Retry-After", String(Math.ceil(rateLimitWindowMs / 1000)));
         return json(res, 429, { erro: "Muitas consultas. Aguarde um momento e tente novamente." });
@@ -162,6 +176,7 @@ function criarServidor({
       calcularChegada: calcularChegadaGtfs,
       carregarOnibus: onibusDaLinha,
       permitir: permitido,
+      obterIp: ipCliente,
       retryAfter: Math.ceil(rateLimitWindowMs / 1000),
       registrarErro: () => { erros += 1; },
       logger,
@@ -173,6 +188,7 @@ function criarServidor({
       buscarParadas: buscarParadasProximas,
       calcularRota: calcularRotaExterna,
       permitir: permitido,
+      obterIp: ipCliente,
       retryAfter: Math.ceil(rateLimitWindowMs / 1000),
       dentroDoRio,
       registrarErro: () => { erros += 1; },

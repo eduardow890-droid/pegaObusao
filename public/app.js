@@ -28,10 +28,12 @@
   const buscarBtn = document.querySelector(".busca button");
   const atualizarBtn = document.getElementById("atualizar");
   const favoritarBtn = document.getElementById("favoritar");
-  const favoritosEl = document.getElementById("favoritos");
   const intervaloEl = document.getElementById("intervalo");
   const sentidoEl = document.getElementById("sentido");
   const sentidoSelect = document.getElementById("sentido-select");
+  const sentidoOpcoesEl = document.getElementById("sentido-opcoes");
+  const menuOpcoesEl = document.getElementById("menu-opcoes");
+  const abrirMenuBtn = document.getElementById("abrir-menu");
   const painelEl = document.getElementById("form");
   const alternarPainelBtn = document.getElementById("alternar-painel");
   const painelResumoEl = document.getElementById("painel-resumo");
@@ -46,8 +48,8 @@
   const enderecoEl = document.getElementById("endereco");
   const enderecosEl = document.getElementById("enderecos");
   const paradasBtn = document.getElementById("buscar-paradas");
-  const rotaStatusEl = document.getElementById("rota-status");
   let marcadores = [];
+  const marcadoresPorOrdem = new Map();
   let paradas = [];
   let paradasLinha = [];
   let sequencia = 0;       // muda a cada nova busca de linha: respostas antigas são ignoradas
@@ -108,11 +110,11 @@
 
   function mostrarResultado(linha, texto = "") {
     resultadoCardEl.hidden = false;
+    resultadoCardEl.classList.remove("instrucao", "estimativa", "erro");
+    resultadoCardEl.classList.add("instrucao");
     resultadoLinhaEl.textContent = linha ? `Linha ${linha}${indiceSentido !== null && dadosLinhaAtual?.variantes?.[indiceSentido]?.destino ? ` · ${dadosLinhaAtual.variantes[indiceSentido].destino}` : ""}` : "";
-    if (texto) {
-      resultadoParadaEl.textContent = "";
-      estimativaEl.textContent = "Estimativa pendente";
-    }
+    estimativaEl.textContent = indiceSentido === null ? "Escolha o sentido" : localizacao ? "Consultando…" : "Toque em Usar minha localização";
+    if (texto) resultadoParadaEl.textContent = "";
     resultadoDetalheEl.textContent = texto;
     atualizarResumoPainel();
   }
@@ -137,8 +139,27 @@
   const hhmm = (d) => d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
   function limpar() {
-    marcadores.forEach((m) => m.remove());
+    marcadoresPorOrdem.forEach((m) => {
+      cancelAnimationFrame(m.__anim);
+      m.remove();
+    });
+    marcadoresPorOrdem.clear();
     marcadores = [];
+  }
+
+  function moverSuave(marcador, destino, ms = 900) {
+    const origem = marcador.getLngLat();
+    cancelAnimationFrame(marcador.__anim);
+    const inicio = performance.now();
+    const passo = (agora) => {
+      const fator = Math.min(1, (agora - inicio) / ms);
+      marcador.setLngLat([
+        origem.lng + (destino[0] - origem.lng) * fator,
+        origem.lat + (destino[1] - origem.lat) * fator,
+      ]);
+      if (fator < 1) marcador.__anim = requestAnimationFrame(passo);
+    };
+    marcador.__anim = requestAnimationFrame(passo);
   }
 
   function limparParadas() {
@@ -159,8 +180,13 @@
     statusEl.classList.toggle("secundario", !!linhaAtual);
     tentarBtn.hidden = !erro || !linhaAtual;
     if (resultadoCardEl && linhaAtual) {
-      mostrarResultado(linhaAtual, texto);
-      if (erro) abrirPainel();
+      resultadoLinhaEl.textContent = `Linha ${linhaAtual}${indiceSentido !== null && dadosLinhaAtual?.variantes?.[indiceSentido]?.destino ? ` · ${dadosLinhaAtual.variantes[indiceSentido].destino}` : ""}`;
+      if (erro) {
+        resultadoCardEl.className = "resultado-cartao erro";
+        estimativaEl.textContent = "Não foi possível atualizar";
+        resultadoDetalheEl.textContent = texto;
+        abrirPainel();
+      } else if (resultadoCardEl.classList.contains("instrucao")) resultadoDetalheEl.textContent = texto;
     }
   }
 
@@ -179,22 +205,14 @@
     catch { return []; }
   }
 
-  function desenharFavoritos() {
-    favoritosEl.replaceChildren();
-    favoritos().forEach((linha) => {
-      const botao = document.createElement("button");
-      botao.type = "button";
-      botao.textContent = linha;
-      botao.title = `Pesquisar linha ${linha}`;
-      botao.addEventListener("click", () => buscar(linha));
-      favoritosEl.append(botao);
-    });
-  }
+  function desenharFavoritos() {}
 
   function atualizarFavorito() {
     const ativo = linhaAtual && favoritos().includes(linhaAtual);
     favoritarBtn.disabled = !linhaAtual;
-    favoritarBtn.textContent = ativo ? "★ Remover favorita" : "☆ Favoritar linha";
+    favoritarBtn.textContent = ativo ? "★" : "☆";
+    favoritarBtn.title = ativo ? "Remover linha dos favoritos" : "Favoritar linha";
+    favoritarBtn.setAttribute("aria-label", favoritarBtn.title);
   }
 
   function adicionarRota(geometria) {
@@ -274,6 +292,7 @@
     dadosLinhaAtual = null;
     indiceSentido = null;
     sentidoSelect.replaceChildren(new Option("Escolha um destino", ""));
+    sentidoOpcoesEl.replaceChildren();
     sentidoSelect.disabled = true;
     sentidoEl.classList.add("oculto");
     try {
@@ -283,6 +302,15 @@
       dados.variantes.forEach((variante, indice) => {
         const destino = variante.destino || `Sentido ${variante.sentido || indice + 1}`;
         sentidoSelect.append(new Option(destino, String(indice)));
+        const botao = document.createElement("button");
+        botao.type = "button";
+        botao.textContent = destino;
+        botao.setAttribute("aria-pressed", "false");
+        botao.addEventListener("click", () => {
+          sentidoSelect.value = String(indice);
+          sentidoSelect.dispatchEvent(new Event("change"));
+        });
+        sentidoOpcoesEl.append(botao);
       });
       sentidoSelect.disabled = false;
       sentidoEl.classList.remove("oculto");
@@ -321,37 +349,43 @@
   async function atualizarEstimativa() {
     if (!linhaAtual || indiceSentido === null) return;
     if (!localizacao) {
-      estimativaEl.textContent = "Estimativa: informe sua localização";
-      resultadoParadaEl.textContent = "Use “Minha localização” ou informe um endereço abaixo.";
+      resultadoCardEl.className = "resultado-cartao instrucao";
+      estimativaEl.textContent = "Toque em Usar minha localização";
+      resultadoParadaEl.textContent = "A localização ajuda a encontrar sua parada mais próxima.";
       resultadoDetalheEl.textContent = "A posição fica no navegador e não é armazenada.";
       return;
     }
     if (localizacao.accuracy > 500) {
-      estimativaEl.textContent = "Estimativa indisponível";
+      resultadoCardEl.className = "resultado-cartao instrucao";
+      estimativaEl.textContent = "Localização pouco precisa";
       resultadoParadaEl.textContent = "Sua localização está pouco precisa.";
       resultadoDetalheEl.textContent = "Digite um endereço para melhorar o resultado.";
       return;
     }
-    estimativaEl.textContent = "Estimativa: calculando…";
+    resultadoCardEl.className = "resultado-cartao instrucao";
+    estimativaEl.textContent = "Consultando chegada…";
     try {
       const dados = await jsonApi(`/api/chegada?linha=${encodeURIComponent(linhaAtual)}&variante=${indiceSentido}&lat=${arredondarCoordenada(localizacao.lat)}&lng=${arredondarCoordenada(localizacao.lng)}`);
       estimativaAtual = dados;
       if (!dados.disponivel) {
-        estimativaEl.textContent = "Estimativa indisponível";
-        resultadoParadaEl.textContent = dados.parada ? `Parada de referência: ${dados.parada.nome}` : "Nenhum ônibus adequado encontrado.";
+        resultadoCardEl.className = "resultado-cartao instrucao";
+        estimativaEl.textContent = "Nenhum ônibus a caminho";
+        resultadoParadaEl.textContent = dados.parada ? `Parada mais próxima: ${dados.parada.nome}` : "Nenhuma parada encontrada nesse sentido.";
         resultadoDetalheEl.textContent = dados.motivo || "Importe os dados oficiais (GTFS) para ver a estimativa de chegada.";
         aplicarDestaque([]);
         return;
       }
       const faixa = dados.estimativa;
-      estimativaEl.textContent = `Estimativa: ${faixa.minimo} a ${faixa.maximo} min`;
-      resultadoParadaEl.textContent = `Parada de referência: ${dados.parada.nome || "não informada"}`;
       const primeiro = dados.onibus?.[0];
       const seguinte = dados.onibus?.[1];
-      resultadoDetalheEl.textContent = `Ônibus ${primeiro?.ordem || "não informado"} a ${formatarDistancia(primeiro?.distanciaMetros)} · sinal de ${primeiro?.sinalSegundos || 0} s${seguinte ? ` · seguinte ${seguinte.ordem}` : ""}`;
+      resultadoCardEl.className = "resultado-cartao estimativa";
+      estimativaEl.textContent = `Chega em ${faixa.minimo} a ${faixa.maximo} min`;
+      resultadoParadaEl.textContent = `Parada ${dados.parada.nome || "mais próxima"} · ônibus a ${formatarDistancia(primeiro?.distanciaMetros)}`;
+      resultadoDetalheEl.textContent = `${dados.aviso || `Atualizado há ${primeiro?.sinalSegundos || 0} s`}${seguinte ? " · há outro ônibus depois" : ""}`;
       aplicarDestaque((dados.onibus || []).map((item) => String(item.ordem)));
     } catch (erro) {
-      estimativaEl.textContent = "Estimativa indisponível";
+      resultadoCardEl.className = "resultado-cartao erro";
+      estimativaEl.textContent = "Não foi possível estimar";
       resultadoParadaEl.textContent = "Não foi possível consultar a estimativa agora.";
       resultadoDetalheEl.textContent = erro.message.includes("GTFS") ? erro.message : "Importe os dados oficiais (GTFS) para ver a estimativa de chegada.";
       aplicarDestaque([]);
@@ -410,31 +444,45 @@
   }
 
   function desenhar(dados, linha) {
-    limpar();
     ultimaBoa = new Date();
     ultimoDadosOnibus = dados;
     mostrarResultado(linha);
     atualizarResumoPainel();
-    if (indiceSentido === null) {
-      mostrar("Escolha o destino acima para mostrar os ônibus daquela direção.");
-      return;
-    }
-    const filtrados = onibusDoSentido(dados.onibus);
+    const filtrados = indiceSentido === null ? dados.onibus : onibusDoSentido(dados.onibus);
     dados = { ...dados, total: filtrados.length, onibus: filtrados };
     if (dados.total === 0) {
+      limpar();
       mostrar(`Nenhum ônibus ativo indo para esse destino agora.`);
       return;
     }
+    const ordensAtuais = new Set(dados.onibus.map((o) => String(o.ordem)));
+    marcadoresPorOrdem.forEach((marcador, ordem) => {
+      if (!ordensAtuais.has(ordem)) {
+        cancelAnimationFrame(marcador.__anim);
+        marcador.remove();
+        marcadoresPorOrdem.delete(ordem);
+      }
+    });
     const limites = new maplibregl.LngLatBounds();
     dados.onibus.forEach((o) => {
-      const el = document.createElement("div");
+      const ordem = String(o.ordem);
+      let marcador = marcadoresPorOrdem.get(ordem);
+      let el;
+      if (marcador) {
+        el = marcador.getElement();
+      } else {
+        el = document.createElement("div");
+        marcador = new maplibregl.Marker({ element: el }).setLngLat([o.lng, o.lat]).addTo(mapa);
+        marcador.__ordem = ordem;
+        marcadoresPorOrdem.set(ordem, marcador);
+      }
       el.className = "onibus" + (o.velocidade < 1 ? " parado" : "");
       const atualizado = o.hora ? hhmm(new Date(o.hora)) : "horário indisponível";
       const destino = o.destino || o.sentido || "Não informado pela API";
       el.title = `Ordem ${o.ordem} · ${Math.round(o.velocidade)} km/h · ${atualizado}`;
       el.setAttribute("aria-label", `Ônibus ${o.ordem}, ${Math.round(o.velocidade)} quilômetros por hora, atualizado às ${atualizado}`);
       el.innerHTML = ICONE_ONIBUS;
-      const marcador = new maplibregl.Marker({ element: el }).setLngLat([o.lng, o.lat]).addTo(mapa);
+      moverSuave(marcador, [o.lng, o.lat]);
       const conteudo = document.createElement("div");
       [`Linha ${linha}`, `Ordem: ${o.ordem}`, `Destino/sentido: ${destino}`, `Velocidade: ${Math.round(o.velocidade)} km/h`, `Atualização: ${idadeTexto(o.hora)}`].forEach((texto) => {
         const linhaPopup = document.createElement("div");
@@ -442,10 +490,9 @@
         conteudo.append(linhaPopup);
       });
       marcador.setPopup(new maplibregl.Popup({ offset: 18 }).setDOMContent(conteudo));
-      marcador.__ordem = String(o.ordem);
-      marcadores.push(marcador);
       limites.extend([o.lng, o.lat]);
     });
+    marcadores = [...marcadoresPorOrdem.values()];
     if (primeiraVez) {
       mapa.fitBounds(limites, { padding: margens(), maxZoom: 15 });
       primeiraVez = false;
@@ -454,7 +501,8 @@
     const maisNovo = Math.max(...dados.onibus.map((o) => o.hora || 0));
     const idadeMin = maisNovo ? Math.round((Date.now() - maisNovo) / 60000) : 0;
     const aviso = idadeMin >= 3 ? ` Atenção: o sinal mais recente tem ${idadeMin} min.` : "";
-    mostrar(`${dados.total} ônibus da linha ${linha}. Consulta às ${hhmm(ultimaBoa)}; sinal ${idadeTexto(maisNovo)}.${aviso}`, idadeMin >= 3);
+    const refinamento = indiceSentido === null ? " Escolha um sentido para refinar o mapa." : "";
+    mostrar(`${dados.total} ônibus da linha ${linha}. Consulta às ${hhmm(ultimaBoa)}; sinal ${idadeTexto(maisNovo)}.${refinamento}${aviso}`, idadeMin >= 3);
     atualizarEstimativa();
   }
 
@@ -534,6 +582,11 @@
   );
   sentidoSelect.addEventListener("change", () => {
     indiceSentido = sentidoSelect.value === "" ? null : Number(sentidoSelect.value);
+    sentidoOpcoesEl.querySelectorAll("button").forEach((botao, indice) => {
+      const ativo = indice === indiceSentido;
+      botao.classList.toggle("ativo", ativo);
+      botao.setAttribute("aria-pressed", String(ativo));
+    });
     limparRotaLinha();
     if (dadosLinhaAtual && indiceSentido !== null) {
       if (mapa.isStyleLoaded()) adicionarRotaDaLinha(dadosLinhaAtual, indiceSentido);
@@ -609,25 +662,6 @@
   });
   enderecoEl.addEventListener("keydown", (evento) => { if (evento.key === "Enter") document.getElementById("buscar-endereco").click(); });
   paradasBtn.addEventListener("click", () => pontoEndereco && carregarParadas(pontoEndereco));
-  document.getElementById("usar-localizacao").addEventListener("click", () => document.getElementById("localizacao").click());
-  document.getElementById("trocar-rota").addEventListener("click", () => {
-    const origem = document.getElementById("origem");
-    const destino = document.getElementById("destino");
-    [origem.value, destino.value] = [destino.value, origem.value];
-  });
-  document.getElementById("planejar").addEventListener("click", async () => {
-    const origemTexto = document.getElementById("origem").value.trim();
-    const destinoTexto = document.getElementById("destino").value.trim();
-    if (origemTexto.length < 3 || destinoTexto.length < 3) { rotaStatusEl.textContent = "Informe origem e destino."; return; }
-    try {
-      rotaStatusEl.textContent = "Traçando rota…";
-      const [origem, destino] = await Promise.all([geocodificar(origemTexto), geocodificar(destinoTexto)]);
-      const rota = await jsonApi(`/api/rota?origemLat=${origem.lat}&origemLng=${origem.lng}&destinoLat=${destino.lat}&destinoLng=${destino.lng}`);
-      adicionarRota(rota.geometria);
-      enquadrarPontos([origem, destino]);
-      rotaStatusEl.textContent = `Tempo estimado de carro: ${(rota.distanciaMetros / 1000).toFixed(1)} km, cerca de ${Math.round(rota.duracaoSegundos / 60)} min.`;
-    } catch (erro) { rotaStatusEl.textContent = `Não foi possível traçar a rota. ${erro.message}`; }
-  });
   compartilharBtn.addEventListener("click", async () => {
     if (!linhaAtual) return mostrar("Pesquise uma linha antes de compartilhar.", true);
     const url = location.href;
@@ -635,6 +669,10 @@
       if (navigator.share) await navigator.share({ title: `Linha ${linhaAtual} · PegaObusão`, url });
       else { await navigator.clipboard.writeText(url); mostrar("Link copiado para a área de transferência."); }
     } catch (erro) { if (erro.name !== "AbortError") mostrar("Não foi possível compartilhar o link.", true); }
+  });
+  abrirMenuBtn.addEventListener("click", () => {
+    menuOpcoesEl.open = !menuOpcoesEl.open;
+    abrirMenuBtn.setAttribute("aria-expanded", String(menuOpcoesEl.open));
   });
   document.addEventListener("keydown", (evento) => {
     if (evento.key === "Escape") {

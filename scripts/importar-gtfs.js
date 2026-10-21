@@ -32,13 +32,19 @@ function numero(valor) {
   return Number.isFinite(resultado) ? resultado : null;
 }
 
+function dataHojeRio() {
+  const formato = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
+  return formato.format(new Date()).replace(/-/g, "");
+}
+
 async function importar() {
   const rotas = new Map();
   const viagens = new Map();
   const paradas = new Map();
   const tempos = new Map();
   const formas = new Map();
-  const dataReferencia = process.env.GTFS_DATE || new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const dataReferencia = process.env.GTFS_DATE || dataHojeRio();
+  const todosServicos = process.env.GTFS_ALL_DAYS !== "0";
   const diaSemana = new Date(`${dataReferencia.slice(0, 4)}-${dataReferencia.slice(4, 6)}-${dataReferencia.slice(6, 8)}T12:00:00Z`).getUTCDay();
   const nomesDias = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
   const servicos = new Map();
@@ -46,10 +52,14 @@ async function importar() {
 
   await ler("calendar.txt", (c) => {
     if (!c.service_id) return;
-    const ativa = dataReferencia >= c.start_date && dataReferencia <= c.end_date && c[nomesDias[diaSemana]] === "1";
+    const ativa = dataReferencia >= c.start_date && dataReferencia <= c.end_date && (todosServicos || c[nomesDias[diaSemana]] === "1");
     servicos.set(c.service_id, ativa);
   });
   await ler("calendar_dates.txt", (c) => {
+    if (todosServicos) {
+      if (c.exception_type === "1") excecoes.set(c.service_id, true);
+      return;
+    }
     if (c.date !== dataReferencia) return;
     excecoes.set(c.service_id, c.exception_type === "1");
   });
@@ -155,6 +165,7 @@ async function importar() {
     linhas: linhas.length,
     paradas: paradas.size,
     rotas: formas.size,
+    todosServicos,
   }, null, 2));
 
   console.log(`Importação concluída: ${linhas.length} linhas, ${paradas.size} paradas e ${formas.size} rotas.`);

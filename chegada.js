@@ -11,6 +11,17 @@ function distanciaMetros(a, b) {
   return Math.hypot(dx, dy);
 }
 
+function rumoGraus(a, b) {
+  const latitude = ((a[1] + b[1]) / 2) * Math.PI / 180;
+  const dx = (b[0] - a[0]) * Math.cos(latitude);
+  const dy = b[1] - a[1];
+  return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+}
+
+function diferencaAngulo(a, b) {
+  return Math.abs(((a - b + 540) % 360) - 180);
+}
+
 function projetarPonto(coordenadas, ponto) {
   if (!Array.isArray(coordenadas) || coordenadas.length < 2) return null;
   let acumulada = 0;
@@ -36,7 +47,7 @@ function projetarPonto(coordenadas, ponto) {
     const trecho = distanciaMetros(a, b);
     const aoLongo = acumulada + trecho * fator;
     if (!melhor || distancia < melhor.distanciaMetros) {
-      melhor = { aoLongo, distanciaMetros: distancia, coordenada: projetado };
+      melhor = { aoLongo, distanciaMetros: distancia, coordenada: projetado, rumoTrecho: rumoGraus(a, b) };
     }
     acumulada += trecho;
   }
@@ -48,7 +59,7 @@ function velocidadeValida(kmh) {
   return Number.isFinite(valor) && valor >= 1 && valor <= 120 ? valor : null;
 }
 
-function estimarChegada({ rota, paradas, onibus, localizacao, agora = Date.now(), maxSinalMs = 180_000 }) {
+function estimarChegada({ rota, paradas, onibus, localizacao, agora = Date.now(), maxSinalMs = 180_000, alvoOrdem = null }) {
   const coordenadas = rota?.coordinates || [];
   if (coordenadas.length < 2 || !Array.isArray(paradas) || !localizacao) {
     return { disponivel: false, motivo: "Dados oficiais de trajeto ou localização insuficientes." };
@@ -63,11 +74,12 @@ function estimarChegada({ rota, paradas, onibus, localizacao, agora = Date.now()
     const hora = Number(bus.hora);
     const sinalMs = Number.isFinite(hora) ? Math.max(0, agora - hora) : Infinity;
     const posicao = projetarPonto(coordenadas, bus);
-    const velocidade = velocidadeValida(bus.velocidade);
+    const velocidade = velocidadeValida(bus.velocidadeEma) ?? velocidadeValida(bus.velocidade);
     const anterior = Number.isFinite(bus.progressoAnterior) ? bus.progressoAnterior : null;
     const avancando = anterior === null || posicao?.aoLongo >= anterior - 150;
-    return { bus, hora, sinalMs, posicao, velocidade, avancando };
+    return { bus, hora, sinalMs, posicao, velocidade: velocidade ?? velocidadeValida(bus.velocidadeEma), avancando };
   }).filter((item) => item.posicao && item.sinalMs < maxSinalMs && item.avancando)
+    .filter((item) => item.bus.rumoCompativel !== false)
     .filter((item) => paradaMaisProxima.posicao.aoLongo - item.posicao.aoLongo > 50)
     .sort((a, b) => (paradaMaisProxima.posicao.aoLongo - a.posicao.aoLongo) - (paradaMaisProxima.posicao.aoLongo - b.posicao.aoLongo));
 
@@ -80,18 +92,28 @@ function estimarChegada({ rota, paradas, onibus, localizacao, agora = Date.now()
     };
   }
 
-  const velocidades = candidatos.map((item) => item.velocidade).filter(Boolean);
-  const media = velocidades.length ? velocidades.reduce((total, valor) => total + valor, 0) / velocidades.length : 20;
-  const kmh = Math.max(8, Math.min(40, media));
+  const alvo = alvoOrdem == null ? null : candidatos.find((item) => String(item.bus.ordem) === String(alvoOrdem));
+  if (alvoOrdem != null && !alvo) {
+    return {
+      disponivel: false,
+      alvoAusente: true,
+      candidatosOrdens: candidatos.map((item) => String(item.bus.ordem)),
+      motivo: "O ônibus acompanhado não enviou um sinal válido neste ciclo.",
+      parada: paradaMaisProxima.parada,
+    };
+  }
+
   const faixa = (item) => {
     const distancia = paradaMaisProxima.posicao.aoLongo - item.posicao.aoLongo;
+    const kmh = Math.max(8, Math.min(40, item.velocidade || 20));
     const minutos = distancia / (kmh * 1000 / 3600) / 60;
     return { minimo: Math.max(1, Math.floor(minutos + 1)), maximo: Math.max(2, Math.ceil(minutos * 1.45 + 1)) };
   };
-  const escolhidos = candidatos.slice(0, 2).map((item) => ({
+  const ordenados = alvo ? [alvo, ...candidatos.filter((item) => item !== alvo)] : candidatos;
+  const escolhidos = ordenados.slice(0, 2).map((item) => ({
     ordem: item.bus.ordem,
     distanciaMetros: Math.round(paradaMaisProxima.posicao.aoLongo - item.posicao.aoLongo),
-    velocidadeKmh: Math.round(item.velocidade || kmh),
+    velocidadeKmh: Math.round(item.velocidade || 20),
     sinalSegundos: Math.round(item.sinalMs / 1000),
     faixa: faixa(item),
   }));
@@ -106,4 +128,4 @@ function estimarChegada({ rota, paradas, onibus, localizacao, agora = Date.now()
   };
 }
 
-module.exports = { distanciaMetros, projetarPonto, estimarChegada };
+module.exports = { distanciaMetros, rumoGraus, diferencaAngulo, projetarPonto, estimarChegada };

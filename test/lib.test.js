@@ -35,11 +35,11 @@ test("linha sem veículos devolve lista vazia", async () => {
   assert.deepEqual(onibus, []);
 });
 
-test("consulta o minuto atual e o anterior com minuto_utc", async () => {
+test("consulta o minuto atual e o anterior e tenta um terceiro minuto sem dados", async () => {
   const urls = [];
   await carregarOnibus("485", { fetch: async (u) => (urls.push(new URL(u)), resposta(semOnibus)), agora });
   const minutos = urls.map((u) => u.searchParams.get("minuto_utc")).sort();
-  assert.deepEqual(minutos, ["2026-10-17T14:31:00Z", "2026-10-17T14:32:00Z"]);
+  assert.deepEqual(minutos, ["2026-10-17T14:30:00Z", "2026-10-17T14:31:00Z", "2026-10-17T14:32:00Z"]);
   assert.ok(urls.every((u) => u.searchParams.get("servico") === "485" && u.searchParams.get("limit")));
   assert.ok(urls.every((u) => !u.searchParams.has("datetime_inicio")));
 });

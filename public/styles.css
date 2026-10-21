@@ -39,7 +39,10 @@
   }
   .painel { transition: max-height .2s ease, transform .2s ease, opacity .2s ease; }
   .painel-resumo { display: none; }
-  .resultado-cartao { display: grid; gap: 3px; margin-top: 10px; padding: 10px 12px; background: #fff3bd; border-left: 5px solid var(--amarelo); border-radius: 9px; }
+  .resultado-cartao { display: grid; gap: 3px; margin-top: 12px; padding: 12px; background: #edf3f6; border-left: 5px solid #8b9aa3; border-radius: 9px; }
+  .resultado-cartao.instrucao { background: #edf3f6; border-left-color: #8b9aa3; }
+  .resultado-cartao.estimativa { background: #fff3bd; border-left-color: var(--amarelo); }
+  .resultado-cartao.erro { background: #fff0ed; border-left-color: var(--erro); }
   .resultado-cartao[hidden] { display: none; }
   .resultado-cartao strong { color: var(--baia); font-size: 1.35rem; }
   .resultado-cartao span { font-size: .8rem; color: var(--suave); }
@@ -48,6 +51,11 @@
   .ajustes { margin-top: 8px; font-size: .8rem; }
   .ajustes summary, .secao summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 800; color: var(--baia); }
   .ajustes select { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #9ba8af; border-radius: 8px; font: inherit; }
+  .menu-opcoes { position: relative; margin-top: 8px; }
+  .menu-opcoes > summary { display: none; }
+  .menu-acoes { padding: 10px 0 0; border-top: 1px solid #ddd3bd; }
+  .menu-linha { display: flex; gap: 7px; margin-top: 8px; }
+  .menu-linha button { min-height: 44px; padding: 8px 11px; background: #fff; color: var(--baia); border: 1px solid #9ba8af; }
   @media (min-width: 700px) {
     .painel {
       left: 12px; right: auto; bottom: auto; width: 360px;
@@ -61,6 +69,9 @@
   }
   label { display: block; font-weight: 700; font-size: .95rem; margin-bottom: 8px; }
   .busca { display: flex; gap: 8px; }
+  .busca .favoritar-campo, .busca .abrir-menu { flex: 0 0 44px; padding: 0; background: #fff; color: var(--baia); border: 1px solid #9ba8af; font-size: 1.25rem; }
+  .busca .favoritar-campo:disabled { opacity: .55; }
+  .localizacao-principal { width: 100%; min-height: 48px; margin-top: 12px; padding: 10px 14px; background: var(--amarelo); color: var(--baia); font-size: .95rem; }
   input {
     flex: 1; min-width: 0; padding: 12px 14px; font: inherit; font-size: 1.1rem; font-weight: 700;
     border: 2px solid var(--baia); border-radius: 12px; background: #fff; color: var(--texto);
@@ -94,12 +105,12 @@
   .sentido { margin-top: 10px; }
   .sentido label { font-size: .85rem; margin-bottom: 5px; }
   .sentido select { width: 100%; padding: 9px 10px; border: 2px solid var(--baia); border-radius: 10px; background: white; color: var(--texto); font: inherit; }
+  .sentido-opcoes { display: flex; gap: 7px; }
+  .sentido-opcoes button { flex: 1; min-height: 48px; padding: 8px 10px; background: #fff; color: var(--baia); border: 2px solid #9ba8af; }
+  .sentido-opcoes button.ativo { background: var(--baia); color: #fff; border-color: var(--baia); }
   .oculto { display: none; }
   .alternar-painel { display: none; }
-  .painel.estado-compacto > .exemplos,
-  .painel.estado-compacto > .secundarias,
-  .painel.estado-compacto > .favoritos,
-  .painel.estado-compacto > .ajustes,
+  .painel.estado-compacto > .menu-opcoes,
   .painel.estado-compacto > .contador,
   .painel.estado-compacto > .legenda,
   .painel.estado-compacto > .rodape,
@@ -148,7 +159,10 @@
     .painel label { font-size: .85rem; margin-bottom: 5px; }
     .busca input { padding: 9px 10px; font-size: 1rem; }
     .busca button { padding: 9px 15px; }
-    .acoes { margin-top: 7px; gap: 5px; }
+    .busca .favoritar-campo, .busca .abrir-menu { flex-basis: 44px; }
+    .localizacao-principal { margin-top: 9px; }
+    .sentido-opcoes button { min-height: 52px; }
+    .menu-opcoes[open] { max-height: 45vh; overflow-y: auto; }
     .acoes button, .acoes select { padding: 6px 8px; font-size: .75rem; }
     #status { margin-top: 8px; padding: 8px 9px; font-size: .82rem; }
     .secao { margin-top: 8px; padding-top: 7px; }
@@ -167,11 +181,13 @@
   @media (prefers-color-scheme: dark) {
     :root { --baia: #8bd3ff; --baia-2: #1d5277; --areia: #102f45; --texto: #f5f7f8; --suave: #c2d0d8; --erro: #ff9d8f; }
     .marca { background: #071d2d; }
-    .busca button, .campo button, .secao > button, .tentar { color: #062337; }
-    .campo button, .secao > button, .tentar { background: #8bd3ff; }
+    .busca button, .campo button, .secao > button, .tentar, .localizacao-principal { color: #062337; }
+    .campo button, .secao > button, .tentar, .localizacao-principal { background: #8bd3ff; }
     .acoes button, .acoes select { border-color: #7da8bd; }
     .ajustes summary, .secao summary { color: #8bd3ff; }
     .secao[open] summary { border-color: #416176; }
-    input, .sentido select, .acoes button, .acoes select, .resultado button, .ajustes select { background: #173d57; color: #fff; }
-    .resultado-cartao { background: #5c4b00; }
+    input, .sentido select, .acoes button, .acoes select, .resultado button, .ajustes select, .busca .favoritar-campo, .busca .abrir-menu, .sentido-opcoes button, .menu-linha button { background: #173d57; color: #fff; }
+    .resultado-cartao.instrucao { background: #173d57; }
+    .resultado-cartao.estimativa { background: #5c4b00; }
+    .resultado-cartao.erro { background: #4b211b; }
   }

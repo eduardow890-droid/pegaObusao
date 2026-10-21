@@ -10,10 +10,10 @@ function numero(valor) {
   return Number(valor);
 }
 
-async function atender({ req, res, url, buscarLinha, prever, calcularChegada, carregarOnibus, permitir, retryAfter, registrarErro, logger }) {
+async function atender({ req, res, url, buscarLinha, prever, calcularChegada, carregarOnibus, permitir, obterIp = (requisicao) => requisicao.socket.remoteAddress || "desconhecido", retryAfter, registrarErro, logger }) {
   if (!["/api/linha", "/api/previsao", "/api/chegada"].includes(url.pathname)) return false;
   if (req.method !== "GET") { json(res, 405, { erro: "Método não permitido." }); return true; }
-  if (!permitir(req.socket.remoteAddress || "desconhecido")) {
+  if (!permitir(obterIp(req))) {
     res.setHeader("Retry-After", String(retryAfter));
     json(res, 429, { erro: "Muitas consultas. Aguarde um momento e tente novamente." });
     return true;

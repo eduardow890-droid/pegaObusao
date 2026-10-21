@@ -48,6 +48,8 @@ aponte UptimeRobot, Better Stack ou equivalente para `/healthz`.
 
 O endpoint de GPS possui rate limiting por IP. Os valores padrão são 60 consultas por minuto;
 podem ser ajustados com `RATE_LIMIT_MAX` e `RATE_LIMIT_WINDOW_MS`.
+Atrás de um proxy confiável, defina `TRUST_PROXY=true` para usar o primeiro endereço de
+`X-Forwarded-For`; mantenha `false` quando a aplicação estiver exposta diretamente.
 O acesso à SMTR usa até duas tentativas e 15 segundos por chamada; ajuste com `GPS_TIMEOUT_MS`
 se o provedor de hospedagem tiver latência maior.
 O navegador aguarda até 35 segundos pela resposta do GPS para não cancelar a segunda tentativa do servidor.
@@ -66,7 +68,7 @@ e fica com a posição mais recente de cada ônibus. A resposta da aplicação �
 ## Recursos de localização e rotas
 
 - `/api/endereco?q=...`: busca endereços usando Nominatim/OpenStreetMap.
-- `/api/paradas?lat=...&lng=...&raio=800`: busca paradas próximas usando dados do OpenStreetMap.
+- `/api/paradas?lat=...&lng=...&raio=800`: busca primeiro as paradas locais do GTFS importado e usa o OpenStreetMap como fallback.
 - `/api/rota?origemLat=...&origemLng=...&destinoLat=...&destinoLng=...`: calcula uma rota aproximada por vias usando OSRM.
 - `/api/linha?linha=485`: retorna sentidos, paradas e rota oficial importados do GTFS.
 - `/api/previsao?linha=485&variante=0`: retorna previsão aproximada por parada.
@@ -85,8 +87,12 @@ GTFS_URL="https://endereco-do-gtfs/arquivo.zip" npm run atualizar-gtfs
 ```
 
 O importador considera `calendar.txt` e `calendar_dates.txt`. Para reproduzir uma data específica
-durante testes, use `GTFS_DATE=20261020 npm run importar-gtfs`. O endpoint `/healthz` informa se os
+durante testes, use `GTFS_DATE=20261020 npm run importar-gtfs`. A data automática usa o fuso de
+São Paulo, evitando virar o dia às 21h. O endpoint `/healthz` informa se os
 dados GTFS estão disponíveis e a data usada na importação.
+Por padrão, o importador inclui a união dos serviços válidos no período do feed (`GTFS_ALL_DAYS=1`),
+evitando que uma variante de fim de semana desapareça. Use `GTFS_ALL_DAYS=0` para importar somente
+o dia de `GTFS_DATE`.
 
 O backend considera ativo somente o ônibus cuja posição tenha sido recebida dentro do limite
 `MAX_IDADE_ONIBUS_MS` (padrão: 3 minutos). Um ônibus parado pode continuar ativo; velocidade

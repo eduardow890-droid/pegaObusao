@@ -7,9 +7,9 @@
 <title>PegaObusão · ônibus do Rio ao vivo</title>
 <link rel="icon" href="/icon.svg">
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V" crossorigin="anonymous">
 <link rel="stylesheet" href="/styles.css?v=contrast-1">
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" integrity="sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj" crossorigin="anonymous"></script>
 </head>
 <body>
 <div id="mapa"></div>
@@ -27,57 +27,53 @@
     <div class="busca">
       <input id="linha" inputmode="text" autocomplete="off" autocapitalize="characters" placeholder="Ex.: 485">
       <button type="submit">Ver</button>
+      <button type="button" id="favoritar" class="favoritar-campo" disabled aria-label="Favoritar linha" title="Favoritar linha">☆</button>
+      <button type="button" id="abrir-menu" class="abrir-menu" aria-label="Mais opções" aria-expanded="false" aria-controls="menu-opcoes">⋯</button>
     </div>
-    <div id="resultado-card" class="resultado-cartao" hidden aria-live="polite">
-      <strong id="estimativa">Estimativa indisponível</strong>
-      <span id="resultado-linha"></span>
-      <span id="resultado-parada"></span>
-      <span id="resultado-detalhe"></span>
-    </div>
-  </div>
-  <div class="exemplos">Experimente:
-    <button type="button" data-linha="349">349</button>
-    <button type="button" data-linha="485">485</button>
-    <button type="button" data-linha="232">232</button>
   </div>
   <div id="sentido" class="sentido oculto">
     <label for="sentido-select">Para qual direção o ônibus está indo?</label>
-    <select id="sentido-select" disabled><option value="">Escolha um destino</option></select>
+    <div id="sentido-opcoes" class="sentido-opcoes" role="group" aria-label="Sentidos da linha"></div>
+    <select id="sentido-select" disabled hidden><option value="">Escolha um destino</option></select>
   </div>
-  <div class="acoes secundarias" aria-label="Ações">
-    <button type="button" id="localizacao" aria-label="Mostrar minha localização">◎</button>
-    <button type="button" id="atualizar" disabled aria-label="Atualizar agora">↻</button>
-    <button type="button" id="compartilhar" aria-label="Compartilhar esta linha">↗</button>
-    <button type="button" id="favoritar" disabled aria-label="Favoritar linha">☆</button>
+  <button type="button" id="localizacao" class="localizacao-principal">◎ Usar minha localização</button>
+  <div id="resultado-card" class="resultado-cartao" hidden aria-live="polite">
+    <strong id="estimativa">Escolha o sentido</strong>
+    <span id="resultado-linha"></span>
+    <span id="resultado-parada"></span>
+    <span id="resultado-detalhe"></span>
   </div>
-  <div id="favoritos" class="favoritos" aria-label="Linhas favoritas"></div>
-  <details class="ajustes">
-    <summary>Ajustes</summary>
-    <label for="intervalo">Atualização automática</label>
-    <select id="intervalo"><option value="15000">A cada 15 s</option><option value="30000">A cada 30 s</option><option value="60000">A cada 1 min</option></select>
-  </details>
   <p class="contador" id="contador" aria-live="polite"></p>
   <p id="status" role="status">Digite o número da linha para ver os ônibus no mapa.</p>
   <button type="button" id="tentar-novamente" class="tentar" hidden>Tentar novamente</button>
-  <p class="legenda">Clique em um ônibus ou parada para ver detalhes.</p>
-  <details class="secao">
-    <summary>Encontrar endereço e paradas</summary>
-    <label for="endereco">Endereço</label>
-    <div class="campo"><input id="endereco" placeholder="Ex.: Central do Brasil"><button type="button" id="buscar-endereco">Buscar</button></div>
-    <div id="enderecos" class="resultado" aria-live="polite"></div>
-    <button type="button" id="buscar-paradas" disabled>Mostrar paradas próximas</button>
-    <small id="ajuda-paradas">Escolha um endereço ou use sua localização para ativar.</small>
+  <details class="menu-opcoes" id="menu-opcoes">
+    <summary hidden></summary>
+    <div class="menu-acoes">
+      <div class="exemplos">Experimente:
+        <button type="button" data-linha="349">349</button>
+        <button type="button" data-linha="485">485</button>
+        <button type="button" data-linha="232">232</button>
+      </div>
+      <div class="menu-linha">
+        <button type="button" id="atualizar" disabled>↻ Atualizar agora</button>
+        <button type="button" id="compartilhar">↗ Compartilhar</button>
+      </div>
+      <details class="ajustes">
+        <summary>Ajustes</summary>
+        <label for="intervalo">Atualização automática</label>
+        <select id="intervalo"><option value="15000">A cada 15 s</option><option value="30000">A cada 30 s</option><option value="60000">A cada 1 min</option></select>
+      </details>
+      <details class="secao">
+        <summary>Encontrar endereço e paradas</summary>
+        <label for="endereco">Endereço</label>
+        <div class="campo"><input id="endereco" placeholder="Ex.: Central do Brasil"><button type="button" id="buscar-endereco">Buscar</button></div>
+        <div id="enderecos" class="resultado" aria-live="polite"></div>
+        <button type="button" id="buscar-paradas" disabled>Mostrar paradas próximas</button>
+        <small id="ajuda-paradas">Escolha um endereço ou use sua localização para ativar.</small>
+      </details>
+    </div>
   </details>
-  <details class="secao">
-    <summary>Planejar rota</summary>
-    <label for="origem">Origem</label>
-    <div class="campo"><input id="origem" placeholder="Digite a origem"><button type="button" id="usar-localizacao">Usar minha localização</button></div>
-    <label for="destino">Destino</label>
-    <div class="campo"><input id="destino" placeholder="Digite o destino"></div>
-    <button type="button" id="trocar-rota">↕ Trocar origem e destino</button>
-    <button type="button" id="planejar">Traçar rota</button>
-    <div id="rota-status" class="legenda" aria-live="polite"></div>
-  </details>
+  <p class="legenda dica-mapa">Toque em um ônibus ou parada no mapa para ver detalhes.</p>
   <p class="rodape">Dados: Prefeitura do Rio (SMTR) · Mapa: OpenStreetMap</p>
 </form>
 

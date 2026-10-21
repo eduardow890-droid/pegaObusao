@@ -114,14 +114,25 @@ async function buscarMinuto(linha, minuto, cfg) {
 }
 
 // Posição mais recente de cada ônibus da linha (minuto atual + anterior).
+// Um terceiro minuto é consultado somente quando os dois primeiros não
+// entregam nenhum veículo, evitando aumentar o custo normal da API.
 async function carregarOnibus(linha, deps = {}) {
   const cfg = { ...PADRAO, ...deps };
   const agora = cfg.agora();
   const minutos = [minutoUtc(agora), minutoUtc(new Date(agora.getTime() - 60_000))];
+  let terceiroConsultado = false;
 
-  const resultados = await Promise.allSettled(minutos.map((m) => buscarMinuto(linha, m, cfg)));
-  const bons = resultados.filter((r) => r.status === "fulfilled");
-  if (bons.length === 0) throw resultados[0].reason;
+  let resultados = await Promise.allSettled(minutos.map((m) => buscarMinuto(linha, m, cfg)));
+  let bons = resultados.filter((r) => r.status === "fulfilled");
+  if (bons.length === 0) {
+    try {
+      terceiroConsultado = true;
+      resultados = [...resultados, { status: "fulfilled", value: await buscarMinuto(linha, minutoUtc(new Date(agora.getTime() - 2 * 60_000)), cfg) }];
+      bons = resultados.filter((r) => r.status === "fulfilled");
+    } catch (erro) {
+      throw resultados[0].reason || erro;
+    }
+  }
 
   const alvo = linha.toUpperCase();
   const maisRecente = new Map();
@@ -132,6 +143,18 @@ async function carregarOnibus(linha, deps = {}) {
       const atual = maisRecente.get(o.ordem);
       if (!atual || o.hora > atual.hora) maisRecente.set(o.ordem, o);
     }
+  }
+  if (maisRecente.size === 0 && !terceiroConsultado) {
+    try {
+      terceiroConsultado = true;
+      const terceiro = await buscarMinuto(linha, minutoUtc(new Date(agora.getTime() - 2 * 60_000)), cfg);
+      for (const bruto of terceiro) {
+        const o = normalizar(bruto);
+        if (!o || o.linha.toUpperCase() !== alvo) continue;
+        const atual = maisRecente.get(o.ordem);
+        if (!atual || o.hora > atual.hora) maisRecente.set(o.ordem, o);
+      }
+    } catch {}
   }
   return [...maisRecente.values()].filter((onibus) => (
     onibus.hora > 0 && agora.getTime() - onibus.hora <= cfg.maxIdadeMs

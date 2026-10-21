@@ -1,7 +1,8 @@
 {
-  "importadoEm": "2026-10-20T12:09:15.035Z",
+  "importadoEm": "2026-10-21T02:38:59.380Z",
   "dataReferencia": "20261020",
   "linhas": 494,
   "paradas": 7694,
-  "rotas": 961
+  "rotas": 961,
+  "todosServicos": true
 }
