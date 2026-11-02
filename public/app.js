@@ -18,10 +18,10 @@
   mapa.addControl(new maplibregl.NavigationControl(), "bottom-right");
 
   const ICONE_ONIBUS =
-    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="15" rx="3" fill="#0b2a43"/>' +
-    '<rect x="6" y="6" width="12" height="5" rx="1" fill="#ffc20e"/><circle cx="8.5" cy="14.5" r="1.3" fill="#ffc20e"/>' +
-    '<circle cx="15.5" cy="14.5" r="1.3" fill="#ffc20e"/><rect x="6" y="18" width="3" height="3" rx="1" fill="#0b2a43"/>' +
-    '<rect x="15" y="18" width="3" height="3" rx="1" fill="#0b2a43"/></svg>';
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="15" rx="3" fill="#14202E"/>' +
+    '<rect x="6" y="6" width="12" height="5" rx="1" fill="#F2B01E"/><circle cx="8.5" cy="14.5" r="1.3" fill="#F2B01E"/>' +
+    '<circle cx="15.5" cy="14.5" r="1.3" fill="#F2B01E"/><rect x="6" y="18" width="3" height="3" rx="1" fill="#14202E"/>' +
+    '<rect x="15" y="18" width="3" height="3" rx="1" fill="#14202E"/></svg>';
 
   const statusEl = document.getElementById("status");
   const inputEl = document.getElementById("linha");
@@ -237,7 +237,7 @@
       fonte.setData({ type: "Feature", properties: {}, geometry: geometria });
     } else {
       mapa.addSource("rota", { type: "geojson", data: { type: "Feature", properties: {}, geometry: geometria } });
-      mapa.addLayer({ id: "rota", type: "line", source: "rota", paint: { "line-color": "#d44b2d", "line-width": 5, "line-opacity": .8 } });
+      mapa.addLayer({ id: "rota", type: "line", source: "rota", paint: { "line-color": "#F2B01E", "line-width": 5, "line-opacity": .8 } });
     }
   }
 
@@ -255,7 +255,7 @@
       fonte.setData(geojson);
     } else {
       mapa.addSource("rota-linha", { type: "geojson", data: geojson });
-      mapa.addLayer({ id: "rota-linha", type: "line", source: "rota-linha", paint: { "line-color": "#0b2a43", "line-width": 4, "line-opacity": .75 } });
+      mapa.addLayer({ id: "rota-linha", type: "line", source: "rota-linha", paint: { "line-color": "#F2B01E", "line-width": 5, "line-opacity": .75 } });
     }
     variante.paradas.forEach((parada, ordem) => {
       const el = document.createElement("div");
@@ -475,7 +475,7 @@
     localizacaoMarker?.remove();
     const el = document.createElement("div");
     el.setAttribute("aria-label", "Sua localização");
-    el.style.cssText = "width:18px;height:18px;border-radius:50%;background:#2675d8;border:4px solid white;box-shadow:0 1px 6px #333";
+    el.style.cssText = "width:18px;height:18px;border-radius:0;background:#2F6FED;border:3px solid white;box-shadow:none";
     localizacaoMarker = new maplibregl.Marker({ element: el }).setLngLat([coords.longitude, coords.latitude]).addTo(mapa);
     paradasBtn.disabled = false;
     if (buscarParadasAutomaticamente) {

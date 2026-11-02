@@ -1,5 +1,5 @@
-const CACHE = "pegaobusao-shell-v2";
-const ARQUIVOS = ["/", "/app.js", "/favoritos.js", "/styles.css", "/icon.svg", "/manifest.json"];
+const CACHE = "pegaobusao-shell-v3";
+const ARQUIVOS = ["/", "/app.js", "/favoritos.js", "/styles.css", "/styles.css?v=pixel-brt-1", "/icon.svg", "/manifest.json", "/fonts/bungee-latin.woff2", "/fonts/rubik-latin.woff2"];
 const API_OFFLINE = new Set(["/api/linha"]);
 
 self.addEventListener("install", (evento) => {
