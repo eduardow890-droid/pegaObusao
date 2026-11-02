@@ -5,8 +5,8 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { carregarOnibus } = require("./lib");
-const { buscarEnderecos, buscarParadas, calcularRota } = require("./servicos");
+const { carregarOnibus, metricasDescartesGPS } = require("./lib");
+const { buscarEnderecos, buscarParadas, calcularRota, validarContatoNominatim } = require("./servicos");
 const { buscarLinha, statusGtfs, previsao, chegada, buscarParadasLocais } = require("./gtfs");
 const { atender: atenderGtfs } = require("./rotas/gtfs");
 const { atender: atenderServicos } = require("./rotas/servicos");
@@ -18,6 +18,8 @@ const CACHE_MAX = 100;
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 60);
 const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
 const CONFIAR_PROXY = process.env.TRUST_PROXY === "1" || process.env.TRUST_PROXY === "true";
+const METRICS_TOKEN = process.env.METRICS_TOKEN || "";
+const MAP_TILES_URL = process.env.MAP_TILES_URL || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
 // Caixa aproximada da região do Rio: evita usar o servidor como roteador para o mundo todo.
 const dentroDoRio = (p) => p.lat >= -23.2 && p.lat <= -22.6 && p.lng >= -43.9 && p.lng <= -42.9;
@@ -71,13 +73,17 @@ function criarServidor({
   logger = console,
   rateLimitMax = RATE_LIMIT_MAX,
   rateLimitWindowMs = RATE_LIMIT_WINDOW_MS,
+  metricsToken = METRICS_TOKEN,
+  mapTilesUrl = MAP_TILES_URL,
 } = {}) {
   const cache = new Map(); // linha -> { em, onibus }
+  const ultimasRespostasGps = new Map(); // linha -> último conjunto obtido com sucesso
   const pendentes = new Map(); // evita chamadas duplicadas simultâneas pela mesma linha
   const limites = new Map(); // IP -> { inicio, quantidade }
   let requisicoes = 0;
   let erros = 0;
   let gpsUltimaConsulta = null;
+  let gpsUltimoSucesso = null;
   let gpsUltimoErro = null;
 
   function permitido(ip) {
@@ -112,6 +118,8 @@ function criarServidor({
         if (instante - valor.em >= cacheMs) cache.delete(chave);
       }
       const novo = { em: instante, onibus };
+      const sucesso = { em: instante, obtidoEm: new Date(instante).toISOString(), onibus };
+      ultimasRespostasGps.set(linha, sucesso);
       cache.set(linha, novo);
       while (cache.size > cacheMax) cache.delete(cache.keys().next().value);
       return novo;
@@ -135,13 +143,26 @@ function criarServidor({
       const gtfs = statusGtfs();
       return json(res, 200, {
         status: gtfs.disponivel && !gpsUltimoErro ? "ok" : "degradado",
-        requisicoes, erros, gtfs,
-        gps: { ultimaConsulta: gpsUltimaConsulta, ultimoErro: gpsUltimoErro },
+        gtfsDisponivel: gtfs.disponivel,
       });
     }
 
     if (url.pathname === "/metrics") {
-      return json(res, 200, { requisicoes, erros, cacheLinhas: cache.size, consultasPendentes: pendentes.size, gps: { ultimaConsulta: gpsUltimaConsulta, ultimoErro: gpsUltimoErro } });
+      if (!metricsToken || req.headers.authorization !== `Bearer ${metricsToken}`) {
+        return json(res, 401, { erro: "Não autorizado." });
+      }
+      return json(res, 200, {
+        requisicoes,
+        erros,
+        cacheLinhas: cache.size,
+        consultasPendentes: pendentes.size,
+        gps: {
+          ultimaConsulta: gpsUltimaConsulta,
+          ultimoSucesso: gpsUltimoSucesso,
+          ultimoErro: gpsUltimoErro,
+          descartes: metricasDescartesGPS(),
+        },
+      });
     }
 
     if (url.pathname === "/api/onibus") {
@@ -157,14 +178,39 @@ function criarServidor({
       }
       try {
         const { em, onibus } = await onibusDaLinha(linha);
-        gpsUltimaConsulta = new Date().toISOString();
+        gpsUltimaConsulta = new Date(agora()).toISOString();
         gpsUltimoErro = null;
-        return json(res, 200, { linha, total: onibus.length, atualizadoEm: new Date(em).toISOString(), onibus });
+        const resposta = ultimasRespostasGps.get(linha);
+        const obtidoEm = resposta?.obtidoEm || new Date(em).toISOString();
+        gpsUltimoSucesso = obtidoEm;
+        return json(res, 200, {
+          linha,
+          total: onibus.length,
+          atualizadoEm: new Date(em).toISOString(),
+          obtidoEm,
+          ultimaConsultaEm: gpsUltimaConsulta,
+          desatualizado: false,
+          onibus,
+        });
       } catch (e) {
         erros += 1;
-        gpsUltimaConsulta = new Date().toISOString();
+        gpsUltimaConsulta = new Date(agora()).toISOString();
         gpsUltimoErro = e?.message || "erro desconhecido";
         logger.error(`Falha ao ler o GPS (linha ${linha}):`, e); // detalhe só no log do servidor
+        const anterior = ultimasRespostasGps.get(linha);
+        if (anterior) {
+          const idadeSegundos = Math.max(0, Math.floor((agora() - anterior.em) / 1000));
+          return json(res, 200, {
+            linha,
+            total: anterior.onibus.length,
+            atualizadoEm: anterior.obtidoEm,
+            obtidoEm: anterior.obtidoEm,
+            ultimaConsultaEm: gpsUltimaConsulta,
+            desatualizado: true,
+            idadeSegundos,
+            onibus: anterior.onibus,
+          });
+        }
         return json(res, 502, { erro: "Serviço de GPS indisponível no momento. Tente de novo em instantes." });
       }
     }
@@ -215,11 +261,16 @@ function criarServidor({
         res.writeHead(404);
         return res.end("Não encontrado");
       }
+      let conteudo = dados;
+      if (caminho.endsWith("index.html")) {
+        const urlSegura = mapTilesUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        conteudo = Buffer.from(dados.toString("utf8").replace("__MAP_TILES_URL__", urlSegura));
+      }
       res.writeHead(200, {
         "Content-Type": tipos[path.extname(caminho)] || "application/octet-stream",
         "Cache-Control": caminho.endsWith("index.html") ? "no-cache" : "public, max-age=3600",
       });
-      res.end(dados);
+      res.end(conteudo);
     });
   });
 }
@@ -227,6 +278,11 @@ function criarServidor({
 const servidor = criarServidor();
 
 if (require.main === module) {
+  validarContatoNominatim({
+    production: process.env.NODE_ENV === "production",
+    contato: process.env.CONTATO_APP,
+    avisar: console.warn,
+  });
   servidor.listen(PORT, HOST, () => {
     console.log(`Rodando localmente em http://localhost:${PORT}`);
     const enderecos = Object.values(os.networkInterfaces()).flat().filter((item) => item && item.family === "IPv4" && !item.internal).map((item) => item.address);

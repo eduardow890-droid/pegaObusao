@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b2a43">
+<meta name="map-tiles-url" content="__MAP_TILES_URL__">
 <title>PegaObusão · ônibus do Rio ao vivo</title>
 <link rel="icon" href="/icon.svg">
 <link rel="manifest" href="/manifest.json">
@@ -30,6 +31,7 @@
       <button type="button" id="favoritar" class="favoritar-campo" disabled aria-label="Favoritar linha" title="Favoritar linha">☆</button>
       <button type="button" id="abrir-menu" class="abrir-menu" aria-label="Mais opções" aria-expanded="false" aria-controls="menu-opcoes">⋯</button>
     </div>
+    <div id="favoritos" class="favoritos" role="list" aria-label="Linhas favoritas" aria-live="polite"></div>
   </div>
   <div id="sentido" class="sentido oculto">
     <label for="sentido-select">Para qual direção o ônibus está indo?</label>
@@ -45,7 +47,9 @@
   </div>
   <p class="contador" id="contador" aria-live="polite"></p>
   <p id="status" role="status">Digite o número da linha para ver os ônibus no mapa.</p>
+  <p id="gtfs-status" class="erro" role="status" aria-live="polite" hidden></p>
   <button type="button" id="tentar-novamente" class="tentar" hidden>Tentar novamente</button>
+  <button type="button" id="tentar-gtfs" class="tentar" hidden>Tentar carregar dados de linhas novamente</button>
   <details class="menu-opcoes" id="menu-opcoes">
     <summary hidden></summary>
     <div class="menu-acoes">
@@ -77,6 +81,7 @@
   <p class="rodape">Dados: Prefeitura do Rio (SMTR) · Mapa: OpenStreetMap</p>
 </form>
 
+<script src="/favoritos.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

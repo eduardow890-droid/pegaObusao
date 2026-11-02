@@ -6,6 +6,7 @@
 const fs = require("fs");
 const path = require("path");
 const { parse } = require("csv-parse");
+const { comBloqueioGtfs } = require("./gtfs-lock");
 
 const raiz = path.resolve(__dirname, "..", "data", "gtfs");
 const saida = path.resolve(__dirname, "..", "data");
@@ -37,7 +38,10 @@ function dataHojeRio() {
   return formato.format(new Date()).replace(/-/g, "");
 }
 
-async function importar() {
+async function importar({ bloqueioAdquirido = false, downloadSucessoEm = null } = {}) {
+  if (!bloqueioAdquirido) {
+    return comBloqueioGtfs(() => importar({ bloqueioAdquirido: true, downloadSucessoEm }));
+  }
   const rotas = new Map();
   const viagens = new Map();
   const paradas = new Map();
@@ -156,23 +160,30 @@ async function importar() {
   }
 
   fs.mkdirSync(saida, { recursive: true });
+  const metaPath = path.join(saida, "gtfs-meta.json");
+  const metaAnterior = fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, "utf8")) : {};
   fs.writeFileSync(path.join(saida, "linhas.json"), JSON.stringify(linhas));
   fs.writeFileSync(path.join(saida, "paradas.json"), JSON.stringify([...paradas.values()]));
   fs.writeFileSync(path.join(saida, "rotas.json"), JSON.stringify(rotasGeoJson));
-  fs.writeFileSync(path.join(saida, "gtfs-meta.json"), JSON.stringify({
+  fs.writeFileSync(metaPath, JSON.stringify({
     importadoEm: new Date().toISOString(),
     dataReferencia,
     linhas: linhas.length,
     paradas: paradas.size,
     rotas: formas.size,
     todosServicos,
+    ultimoDownloadSucessoEm: downloadSucessoEm || metaAnterior.ultimoDownloadSucessoEm || null,
+    resultadoDownload: downloadSucessoEm ? "sucesso" : metaAnterior.resultadoDownload || "nao_realizado",
   }, null, 2));
 
   console.log(`Importação concluída: ${linhas.length} linhas, ${paradas.size} paradas e ${formas.size} rotas.`);
 }
 
-importar().catch((erro) => {
-  console.error("Falha ao importar GTFS:", erro.message);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  importar().catch((erro) => {
+    console.error("Falha ao importar GTFS:", erro.message);
+    process.exitCode = 1;
+  });
+}
 
+module.exports = { importar };

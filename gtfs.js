@@ -94,7 +94,9 @@ function previsao(dadosLinha, indice, onibus) {
     const candidatos = buses.map(({ bus, posicao }) => {
       const distancia = posicaoParada.aoLongo - posicao.aoLongo;
       if (distancia < 0) return null;
-      const velocidade = Math.max(Number(bus.velocidade) || 0, 8) * 1000 / 3600;
+      const kmh = bus.velocidade == null ? NaN : Number(bus.velocidade);
+      if (!Number.isFinite(kmh) || kmh <= 0) return null;
+      const velocidade = kmh * 1000 / 3600;
       return { minutos: Math.max(1, Math.round(distancia / velocidade / 60)), ordem: bus.ordem };
     }).filter(Boolean).sort((a, b) => a.minutos - b.minutos);
     return { ...parada, previsaoMinutos: candidatos[0]?.minutos ?? null, onibus: candidatos[0]?.ordem ?? null };
@@ -110,15 +112,21 @@ function chegada(dadosLinha, indice, onibus, localizacao, agora = Date.now()) {
     const chave = `${chaveBase}:${bus.ordem}`;
     const anterior = historicoChegada.get(chave);
     let rumoCompativel = true;
-    let velocidadeEma = Number.isFinite(bus.velocidade) && bus.velocidade > 0 ? bus.velocidade : null;
+    let velocidadeEma = bus.velocidade === 0
+      ? 0
+      : Number.isFinite(bus.velocidade) && bus.velocidade > 0 ? bus.velocidade : null;
     if (anterior && posicao) {
       const distancia = distanciaMetros([anterior.lng, anterior.lat], [bus.lng, bus.lat]);
-      const decorrido = Math.max(1, (Number(bus.hora) - Number(anterior.hora)) / 1000);
-      const velocidadeCalculada = distancia / decorrido * 3.6;
-      if (velocidadeCalculada >= 1 && velocidadeCalculada <= 120) {
-        velocidadeEma = anterior.velocidadeEma == null
-          ? velocidadeCalculada
-          : anterior.velocidadeEma * 0.7 + velocidadeCalculada * 0.3;
+      const decorrido = (Number(bus.hora) - Number(anterior.hora)) / 1000;
+      if (decorrido > 0 && bus.velocidade !== 0) {
+        const velocidadeCalculada = distancia / decorrido * 3.6;
+        if (velocidadeCalculada < 1) {
+          velocidadeEma = 0;
+        } else if (velocidadeCalculada <= 120) {
+          velocidadeEma = anterior.velocidadeEma == null
+            ? velocidadeCalculada
+            : anterior.velocidadeEma * 0.7 + velocidadeCalculada * 0.3;
+        }
       }
       if (distancia >= 30 && Number.isFinite(posicao.rumoTrecho)) {
         const rumoOnibus = rumoGraus([anterior.lng, anterior.lat], [bus.lng, bus.lat]);
@@ -168,4 +176,3 @@ function chegada(dadosLinha, indice, onibus, localizacao, agora = Date.now()) {
 }
 
 module.exports = { buscarLinha, statusGtfs, previsao, chegada, buscarParadasLocais, distanciaMetros, varianteDoOnibus, filtrarOnibusSentido };
-

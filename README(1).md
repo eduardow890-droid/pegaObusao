@@ -43,8 +43,8 @@ Em produção, use um servidor com Node.js 18 ou mais recente, HTTPS, um domíni
 e um provedor de tiles com cota adequada ao volume do projeto. As variáveis de ambiente
 disponíveis estão documentadas em `.env.example`.
 
-As rotas `/healthz` e `/metrics` permitem monitoramento básico. Para monitoramento externo,
-aponte UptimeRobot, Better Stack ou equivalente para `/healthz`.
+`/healthz` expõe somente o estado geral para monitoramento externo. `/metrics` exige
+`Authorization: Bearer $METRICS_TOKEN`; configure um token forte antes de consultar as métricas.
 
 O endpoint de GPS possui rate limiting por IP. Os valores padrão são 60 consultas por minuto;
 podem ser ajustados com `RATE_LIMIT_MAX` e `RATE_LIMIT_WINDOW_MS`.
@@ -68,11 +68,11 @@ e fica com a posição mais recente de cada ônibus. A resposta da aplicação �
 ## Recursos de localização e rotas
 
 - `/api/endereco?q=...`: busca endereços usando Nominatim/OpenStreetMap.
-- `/api/paradas?lat=...&lng=...&raio=800`: busca primeiro as paradas locais do GTFS importado e usa o OpenStreetMap como fallback.
-- `/api/rota?origemLat=...&origemLng=...&destinoLat=...&destinoLng=...`: calcula uma rota aproximada por vias usando OSRM.
+- `POST /api/paradas` com JSON `{ "lat": ..., "lng": ..., "raio": 800 }`: busca primeiro as paradas locais do GTFS e usa o OpenStreetMap como fallback.
+- `POST /api/rota` com JSON contendo `origem` e `destino` (`lat`/`lng`): calcula rota aproximada por vias usando OSRM.
 - `/api/linha?linha=485`: retorna sentidos, paradas e rota oficial importados do GTFS.
 - `/api/previsao?linha=485&variante=0`: retorna previsão aproximada por parada.
-- `/api/chegada?linha=485&variante=0&lat=-22.9&lng=-43.2`: retorna uma faixa de chegada baseada no trajeto oficial e no GPS recente; exige GTFS e localização aproximada.
+- `POST /api/chegada?linha=485&variante=0` com JSON `{ "lat": -22.9, "lng": -43.2 }`: estima a chegada baseada no shape e GPS recente; exige GTFS e localização aproximada.
 
 Depois de atualizar os arquivos em `data/gtfs/`, regenere os dados com:
 
@@ -80,6 +80,9 @@ Depois de atualizar os arquivos em `data/gtfs/`, regenere os dados com:
 npm run importar-gtfs
 ```
 
+O feed deve ser obtido no portal oficial de dados abertos da SMTR/Prefeitura:
+https://transportes.prefeitura.rio/ (seção de dados abertos/GTFS). Copie a URL de download
+publicada pela SMTR para `GTFS_URL`; o portal pode alterar o endereço direto do arquivo.
 Para baixar e importar automaticamente, defina `GTFS_URL` e execute:
 
 ```
@@ -95,12 +98,15 @@ evitando que uma variante de fim de semana desapareça. Use `GTFS_ALL_DAYS=0` pa
 o dia de `GTFS_DATE`.
 
 O backend considera ativo somente o ônibus cuja posição tenha sido recebida dentro do limite
-`MAX_IDADE_ONIBUS_MS` (padrão: 3 minutos). Um ônibus parado pode continuar ativo; velocidade
-zero não é usada como critério de inatividade.
+`MAX_IDADE_ONIBUS_MS` (padrão: 3 minutos). Também valida a caixa geográfica do Rio, timestamps,
+velocidade e saltos entre leituras; os descartes aparecem em `/metrics`. Posições usadas após
+falha da API são marcadas como desatualizadas e incluem sua idade. Ônibus parado ou sem velocidade
+confiável não recebe uma ETA numérica. Quando há localização, a interface compara a caminhada
+estimada a 1,2 m/s com a faixa prevista do ônibus.
 
 A rota de planejamento A-B continua sendo geográfica e não representa uma rota de transporte público. A interface informa explicitamente que o tempo é estimado para carro.
 A previsão por parada é aproximada, usa a posição atual do GPS e velocidade do veículo, e não considera
-trânsito ou tempo parado. O novo cálculo usa uma faixa, ignora sinal com 3 minutos ou mais e não guarda a localização do usuário. Para uma previsão oficial, será necessário integrar GTFS-Realtime da SMTR.
+trânsito ou tempo parado. A localização aproximada é enviada ao backend por POST para calcular a ETA e não é persistida pela aplicação. Para uma previsão oficial, será necessário integrar GTFS-Realtime da SMTR.
 
 Se a API mudar seu contrato, a validação em `lib.js` falha com erro em vez de tratar uma resposta inválida
 como se não houvesse ônibus. A paginação também falha explicitamente se ultrapassar o limite de segurança.
@@ -119,6 +125,7 @@ GPS_URL="https://endereco-atual" node server.js
 - `gtfs.js`: leitura dos dados compactos de linhas, paradas e rotas
 - `scripts/importar-gtfs.js`: conversão do GTFS bruto
 - `scripts/atualizar-gtfs.js`: download e conversão automatizados
+- `scripts/gtfs-lock.js`: bloqueio contra downloads/importações simultâneos
 - `public/index.html`: mapa e busca de linha
 - `public/manifest.json` e `public/sw.js`: instalação e cache básico como PWA
 
@@ -135,7 +142,14 @@ Também é possível manter um processo agendador ativo:
 GTFS_URL="https://endereco-do-gtfs/arquivo.zip" npm run agendar-gtfs
 ```
 
-O intervalo padrão é de 7 dias e pode ser alterado com `GTFS_UPDATE_INTERVAL_MS`.
+O intervalo padrão é de 7 dias e pode ser alterado com `GTFS_UPDATE_INTERVAL_MS`. O agendador
+não sobrepõe importações: o bloqueio é compartilhado entre o download/importação e a execução
+manual de `npm run importar-gtfs`. `data/gtfs-meta.json` registra o último download bem-sucedido,
+a última tentativa e seu resultado.
+
+Configure endpoints sem alterar o código usando `NOMINATIM_URL`, `OVERPASS_URL`, `OSRM_URL` e
+`MAP_TILES_URL` (ver `.env.example`). Em produção, `CONTATO_APP` precisa ser um contato real para
+o User-Agent do Nominatim; o servidor falha ao iniciar se o valor estiver ausente ou for o exemplo.
 
 Ainda é necessário integrar GTFS-Realtime para associar veículos a viagens sem heurística,
 e usar Redis caso o projeto rode em mais de uma instância.

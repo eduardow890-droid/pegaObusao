@@ -1,4 +1,5 @@
 "use strict";
+const { lerJson } = require("./json-body");
 
 function json(res, status, corpo) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
@@ -12,7 +13,8 @@ function numero(valor) {
 
 async function atender({ req, res, url, buscarEndereco, buscarParadas, calcularRota, permitir, obterIp = (requisicao) => requisicao.socket.remoteAddress || "desconhecido", retryAfter, dentroDoRio, registrarErro, logger }) {
   if (!["/api/endereco", "/api/paradas", "/api/rota"].includes(url.pathname)) return false;
-  if (req.method !== "GET") { json(res, 405, { erro: "Método não permitido." }); return true; }
+  const metodoEsperado = url.pathname === "/api/endereco" ? "GET" : "POST";
+  if (req.method !== metodoEsperado) { json(res, 405, { erro: "Método não permitido." }); return true; }
   if (!permitir(obterIp(req))) {
     res.setHeader("Retry-After", String(retryAfter));
     json(res, 429, { erro: "Muitas consultas. Aguarde um momento e tente novamente." });
@@ -26,10 +28,17 @@ async function atender({ req, res, url, buscarEndereco, buscarParadas, calcularR
       return true;
     }
     if (url.pathname === "/api/paradas") {
-      const lat = numero(url.searchParams.get("lat"));
-      const lng = numero(url.searchParams.get("lng"));
-      const valorRaio = url.searchParams.get("raio");
-      const raio = valorRaio === null ? 800 : numero(valorRaio);
+      let corpo;
+      try {
+        corpo = await lerJson(req);
+      } catch {
+        json(res, 400, { erro: "Envie latitude e longitude em um corpo JSON válido." });
+        return true;
+      }
+      const lat = numero(corpo.lat);
+      const lng = numero(corpo.lng);
+      const valorRaio = corpo.raio;
+      const raio = valorRaio == null ? 800 : numero(valorRaio);
       if (!Number.isFinite(lat) || !Number.isFinite(lng) || !dentroDoRio({ lat, lng }) || !(raio >= 100 && raio <= 2000)) {
         json(res, 400, { erro: "Informe latitude, longitude e um raio válido." });
         return true;
@@ -37,8 +46,15 @@ async function atender({ req, res, url, buscarEndereco, buscarParadas, calcularR
       json(res, 200, await buscarParadas(lat, lng, raio));
       return true;
     }
-    const origem = { lat: numero(url.searchParams.get("origemLat")), lng: numero(url.searchParams.get("origemLng")) };
-    const destino = { lat: numero(url.searchParams.get("destinoLat")), lng: numero(url.searchParams.get("destinoLng")) };
+    let corpo;
+    try {
+      corpo = await lerJson(req);
+    } catch {
+      json(res, 400, { erro: "Envie origem e destino em um corpo JSON válido." });
+      return true;
+    }
+    const origem = { lat: numero(corpo.origem?.lat), lng: numero(corpo.origem?.lng) };
+    const destino = { lat: numero(corpo.destino?.lat), lng: numero(corpo.destino?.lng) };
     if ([origem, destino].some((p) => !Number.isFinite(p.lat) || !Number.isFinite(p.lng) || !dentroDoRio(p))) {
       json(res, 400, { erro: "Informe origem e destino válidos." });
       return true;
@@ -53,4 +69,3 @@ async function atender({ req, res, url, buscarEndereco, buscarParadas, calcularR
 }
 
 module.exports = { atender };
-

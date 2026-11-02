@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { minutoUtc, normalizar, buscarMinuto, carregarOnibus } = require("../lib");
+const { minutoUtc, normalizar, buscarMinuto, carregarOnibus, metricasDescartesGPS } = require("../lib");
 const comOnibus = require("./fixtures/linha-com-onibus.json");
 const semOnibus = require("./fixtures/linha-sem-onibus.json");
 
@@ -12,7 +12,10 @@ test("minutoUtc zera os segundos e usa UTC", () => {
 });
 
 test("normalizar aceita vírgula decimal e descarta registros inválidos", () => {
-  const ok = normalizar({ id_veiculo: "A1", servico: "485", latitude: "-22,9", longitude: "-43,2", datetime: "2026-10-17T14:32:10Z" });
+  const ok = normalizar(
+    { id_veiculo: "A1", servico: "485", latitude: "-22,9", longitude: "-43,2", datetime: "2026-10-17T14:32:10Z" },
+    { agora: Date.parse("2026-10-17T14:32:45Z") },
+  );
   assert.equal(ok.lat, -22.9);
   assert.equal(ok.linha, "485");
   assert.equal(normalizar({ servico: "485", latitude: -22, longitude: -43 }), null); // sem id_veiculo
@@ -21,6 +24,45 @@ test("normalizar aceita vírgula decimal e descarta registros inválidos", () =>
   assert.equal(normalizar({ id_veiculo: "A1", servico: "485", latitude: "-22.9xyz", longitude: -43 }), null);
   assert.equal(normalizar({ id_veiculo: "A1", servico: "   ", latitude: -22, longitude: -43 }), null);
   assert.equal(normalizar({ id_veiculo: "A1", servico: "485", latitude: 999, longitude: -43 }), null);
+});
+
+test("rejeita timestamps futuros, coordenadas inválidas/fora do Rio e velocidades impossíveis", async () => {
+  const agoraMs = Date.parse("2026-10-17T14:32:45Z");
+  const base = { id_veiculo: "A1", servico: "485", latitude: -22.9, longitude: -43.2, datetime: new Date(agoraMs).toISOString() };
+  assert.equal(normalizar({ ...base, datetime: new Date(agoraMs + 31_000).toISOString() }, { agora: agoraMs }), null);
+  assert.equal(normalizar({ ...base, latitude: 0, longitude: 0 }, { agora: agoraMs }), null);
+  assert.equal(normalizar({ ...base, latitude: -22.4 }, { agora: agoraMs }), null);
+  assert.equal(normalizar({ ...base, velocidade: 101 }, { agora: agoraMs }), null);
+
+  const before = metricasDescartesGPS();
+  await carregarOnibus("485", {
+    agora: () => new Date(agoraMs),
+    fetch: async () => resposta({ data: [
+      { ...base, datetime: new Date(agoraMs + 31_000).toISOString() },
+      { ...base, latitude: 0, longitude: 0 },
+      { ...base, latitude: -22.4 },
+      { ...base, velocidade: 101 },
+    ] }),
+  });
+  const after = metricasDescartesGPS();
+  for (const motivo of ["timestamp_futuro", "coordenada_zero_zero", "fora_do_rio", "velocidade_impossivel"]) {
+    assert.ok(after[motivo] > (before[motivo] || 0), `deve contar descarte: ${motivo}`);
+  }
+});
+
+test("descarta salto de posição impossível entre leituras do mesmo veículo", async () => {
+  const agoraMs = Date.parse("2026-10-17T14:32:45Z");
+  const before = metricasDescartesGPS();
+  const onibus = await carregarOnibus("485", {
+    agora: () => new Date(agoraMs),
+    fetch: async () => resposta({ data: [
+      { id_veiculo: "J1", servico: "485", latitude: -22.9, longitude: -43.2, velocidade: 30, datetime: new Date(agoraMs - 90_000).toISOString() },
+      { id_veiculo: "J1", servico: "485", latitude: -22.88, longitude: -43.2, velocidade: 30, datetime: new Date(agoraMs - 60_000).toISOString() },
+    ] }),
+  });
+  assert.equal(onibus.length, 1);
+  assert.equal(onibus[0].lat, -22.9);
+  assert.ok(metricasDescartesGPS().salto_posicao > (before.salto_posicao || 0));
 });
 
 test("filtra pela linha, deduplica e fica com a posição mais recente", async () => {

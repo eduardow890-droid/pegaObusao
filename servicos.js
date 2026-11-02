@@ -2,8 +2,24 @@
 
 const TIMEOUT_MS = 10_000;
 // A política do Nominatim pede identificação do app (com contato) e no máximo 1 requisição por segundo.
-const CONTATO = process.env.CONTATO_APP || "projeto educacional";
 const INTERVALO_NOMINATIM_MS = 1100;
+const DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
+const DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+const DEFAULT_OSRM_URL = "https://router.project-osrm.org/route/v1/driving";
+
+function validarContatoNominatim({ production = process.env.NODE_ENV === "production", contato = process.env.CONTATO_APP, avisar = console.warn } = {}) {
+  const valor = String(contato || "").trim();
+  const invalido = !valor || /seu-email@example\.com|projeto educacional/i.test(valor);
+  if (!invalido) return true;
+  const mensagem = "Configure CONTATO_APP com um e-mail ou site real para identificar o PegaObusão no Nominatim.";
+  if (production) throw new Error(mensagem);
+  avisar(mensagem);
+  return false;
+}
+
+function contatoNominatim() {
+  return String(process.env.CONTATO_APP || "CONTATO_NAO_CONFIGURADO").trim();
+}
 
 // Cache simples com validade e tamanho máximo.
 function criarCache(validadeMs, maximo = 200) {
@@ -40,7 +56,7 @@ function numero(valor) {
 async function jsonFetch(url, opcoes = {}) {
   const resposta = await fetch(url, {
     ...opcoes,
-    headers: { "User-Agent": `PegaObusao/1.0 (${CONTATO})`, ...(opcoes.headers || {}) },
+    headers: { "User-Agent": `PegaObusao/1.0 (${contatoNominatim()})`, ...(opcoes.headers || {}) },
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!resposta.ok) throw new Error(`Serviço externo respondeu ${resposta.status}`);
@@ -51,7 +67,7 @@ async function buscarEnderecos(q) {
   const chave = q.trim().toLowerCase();
   const guardado = cacheEnderecos.pegar(chave);
   if (guardado) return guardado;
-  const url = new URL("https://nominatim.openstreetmap.org/search");
+  const url = new URL(process.env.NOMINATIM_URL || DEFAULT_NOMINATIM_URL);
   url.searchParams.set("q", `${q}, Rio de Janeiro, RJ`);
   url.searchParams.set("format", "jsonv2");
   url.searchParams.set("limit", "5");
@@ -74,7 +90,7 @@ async function buscarParadas(lat, lng, raio = 800) {
   const guardado = cacheParadas.pegar(chave);
   if (guardado) return guardado;
   const query = `[out:json][timeout:8];nwr[highway=bus_stop](around:${raio},${lat},${lng});out center tags;`;
-  const dados = await jsonFetch("https://overpass-api.de/api/interpreter", {
+  const dados = await jsonFetch(process.env.OVERPASS_URL || DEFAULT_OVERPASS_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=UTF-8" },
     body: query,
@@ -94,7 +110,8 @@ async function buscarParadas(lat, lng, raio = 800) {
 }
 
 async function calcularRota(origem, destino) {
-  const url = new URL(`https://router.project-osrm.org/route/v1/driving/${origem.lng},${origem.lat};${destino.lng},${destino.lat}`);
+  const base = (process.env.OSRM_URL || DEFAULT_OSRM_URL).replace(/\/+$/, "");
+  const url = new URL(`${base}/${origem.lng},${origem.lat};${destino.lng},${destino.lat}`);
   url.searchParams.set("overview", "full");
   url.searchParams.set("geometries", "geojson");
   const dados = await jsonFetch(url);
@@ -108,5 +125,12 @@ async function calcularRota(origem, destino) {
   };
 }
 
-module.exports = { buscarEnderecos, buscarParadas, calcularRota };
-
+module.exports = {
+  buscarEnderecos,
+  buscarParadas,
+  calcularRota,
+  validarContatoNominatim,
+  DEFAULT_NOMINATIM_URL,
+  DEFAULT_OVERPASS_URL,
+  DEFAULT_OSRM_URL,
+};

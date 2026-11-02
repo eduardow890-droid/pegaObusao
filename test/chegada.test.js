@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { projetarPonto, rumoGraus, diferencaAngulo, estimarChegada } = require("../chegada");
+const { projetarPonto, rumoGraus, diferencaAngulo, estimarChegada, compararChegadaCaminhando } = require("../chegada");
 
 const rota = { type: "LineString", coordinates: [[-43.2, -22.9], [-43.19, -22.9], [-43.18, -22.9]] };
 const parada = { id: "P1", nome: "Parada teste", lat: -22.9, lng: -43.18 };
@@ -30,7 +30,7 @@ test("estima apenas ônibus antes da parada e ignora o que já passou", () => {
   assert.deepEqual(dados.onibus.map((item) => item.ordem), ["antes"]);
 });
 
-test("descarta sentido contrário, sinal velho e velocidade inválida", () => {
+test("sinal velho e sentido contrário são descartados; ônibus parado não recebe ETA inventado", () => {
   const dados = estimarChegada({
     rota, paradas: [parada], agora, localizacao: { lat: -22.9, lng: -43.2 },
     onibus: [
@@ -41,7 +41,32 @@ test("descarta sentido contrário, sinal velho e velocidade inválida", () => {
   });
   assert.equal(dados.disponivel, true);
   assert.equal(dados.onibus[0].ordem, "parado");
-  assert.ok(dados.estimativa.minimo >= 1);
+  assert.equal(dados.confiavel, false);
+  assert.equal(dados.estimativa, undefined);
+  assert.match(dados.motivo, /parado/);
+});
+
+test("usuário chega antes do ônibus e recebe orientação para sair agora", () => {
+  const comparacao = compararChegadaCaminhando(1.2 * 60 * 4, { minimo: 6, maximo: 8 });
+  assert.equal(comparacao.minutosCaminhando, 4);
+  assert.equal(comparacao.status, "antes");
+  assert.match(comparacao.mensagem, /saia agora/);
+});
+
+test("usuário chega depois do ônibus e não compara sem dados válidos", () => {
+  const comparacao = compararChegadaCaminhando(1.2 * 60 * 9, { minimo: 6, maximo: 8 });
+  assert.equal(comparacao.status, "depois");
+  assert.equal(compararChegadaCaminhando(null, { minimo: 6, maximo: 8 }), null);
+});
+
+test("velocidade desconhecida também não gera previsão numérica", () => {
+  const dados = estimarChegada({
+    rota, paradas: [parada], agora, localizacao: { lat: -22.9, lng: -43.2 },
+    onibus: [{ ordem: "sem-velocidade", lat: -22.9, lng: -43.19, velocidade: null, hora: agora }],
+  });
+  assert.equal(dados.disponivel, true);
+  assert.equal(dados.confiavel, false);
+  assert.equal(dados.estimativa, undefined);
 });
 
 test("sem ônibus retorna motivo honesto", () => {

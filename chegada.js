@@ -59,6 +59,23 @@ function velocidadeValida(kmh) {
   return Number.isFinite(valor) && valor >= 1 && valor <= 120 ? valor : null;
 }
 
+function compararChegadaCaminhando(distanciaUsuarioMetros, estimativaOnibus) {
+  if (!Number.isFinite(distanciaUsuarioMetros) || !estimativaOnibus
+    || !Number.isFinite(estimativaOnibus.minimo) || !Number.isFinite(estimativaOnibus.maximo)) return null;
+  const minutosCaminhando = Math.ceil(Math.max(0, distanciaUsuarioMetros) / 1.2 / 60);
+  const antes = minutosCaminhando <= estimativaOnibus.minimo;
+  const depois = minutosCaminhando > estimativaOnibus.maximo;
+  return {
+    minutosCaminhando,
+    status: antes ? "antes" : depois ? "depois" : "incerto",
+    mensagem: antes
+      ? `O ônibus chega em ${estimativaOnibus.minimo} min, você leva ${minutosCaminhando} min a pé: saia agora.`
+      : depois
+        ? `Você leva ${minutosCaminhando} min a pé e pode chegar depois do ônibus.`
+        : `Você leva ${minutosCaminhando} min a pé; a chegada do ônibus está em uma faixa incerta.`,
+  };
+}
+
 function estimarChegada({ rota, paradas, onibus, localizacao, agora = Date.now(), maxSinalMs = 180_000, alvoOrdem = null }) {
   const coordenadas = rota?.coordinates || [];
   if (coordenadas.length < 2 || !Array.isArray(paradas) || !localizacao) {
@@ -74,7 +91,9 @@ function estimarChegada({ rota, paradas, onibus, localizacao, agora = Date.now()
     const hora = Number(bus.hora);
     const sinalMs = Number.isFinite(hora) ? Math.max(0, agora - hora) : Infinity;
     const posicao = projetarPonto(coordenadas, bus);
-    const velocidade = velocidadeValida(bus.velocidadeEma) ?? velocidadeValida(bus.velocidade);
+    const velocidadeParada = (bus.velocidade != null && Number(bus.velocidade) === 0)
+      || (bus.velocidadeEma != null && Number(bus.velocidadeEma) === 0);
+    const velocidade = velocidadeParada ? 0 : velocidadeValida(bus.velocidadeEma) ?? velocidadeValida(bus.velocidade);
     const anterior = Number.isFinite(bus.progressoAnterior) ? bus.progressoAnterior : null;
     const avancando = anterior === null || posicao?.aoLongo >= anterior - 150;
     return { bus, hora, sinalMs, posicao, velocidade: velocidade ?? velocidadeValida(bus.velocidadeEma), avancando };
@@ -88,7 +107,10 @@ function estimarChegada({ rota, paradas, onibus, localizacao, agora = Date.now()
       disponivel: false,
       motivo: "Não há ônibus com sinal recente antes da parada escolhida.",
       parada: paradaMaisProxima.parada,
-      distanciaUsuarioMetros: posicaoUsuario ? Math.round(Math.abs(paradaMaisProxima.posicao.aoLongo - posicaoUsuario.aoLongo)) : null,
+      distanciaUsuarioMetros: Math.round(distanciaMetros(
+        [localizacao.lng, localizacao.lat],
+        [paradaMaisProxima.parada.lng, paradaMaisProxima.parada.lat],
+      )),
     };
   }
 
@@ -103,17 +125,41 @@ function estimarChegada({ rota, paradas, onibus, localizacao, agora = Date.now()
     };
   }
 
+  const distanciaAteParada = (item) => paradaMaisProxima.posicao.aoLongo - item.posicao.aoLongo;
+  const ordenados = alvo ? [alvo, ...candidatos.filter((item) => item !== alvo)] : candidatos;
+  const distanciaUsuarioMetros = Math.round(distanciaMetros(
+    [localizacao.lng, localizacao.lat],
+    [paradaMaisProxima.parada.lng, paradaMaisProxima.parada.lat],
+  ));
+  const velocidadeDoOnibus = ordenados[0].velocidade;
+  if (!Number.isFinite(velocidadeDoOnibus) || velocidadeDoOnibus <= 0) {
+    const parado = velocidadeDoOnibus === 0;
+    return {
+      disponivel: true,
+      confiavel: false,
+      motivo: parado
+        ? "O ônibus está parado; não há previsão confiável de chegada."
+        : "Velocidade do ônibus desconhecida; não há previsão confiável de chegada.",
+      parada: paradaMaisProxima.parada,
+      onibus: ordenados.slice(0, 2).map((item) => ({
+        ordem: item.bus.ordem,
+        distanciaMetros: Math.round(distanciaAteParada(item)),
+        velocidadeKmh: null,
+        sinalSegundos: Math.round(item.sinalMs / 1000),
+      })),
+      distanciaUsuarioMetros,
+    };
+  }
   const faixa = (item) => {
     const distancia = paradaMaisProxima.posicao.aoLongo - item.posicao.aoLongo;
-    const kmh = Math.max(8, Math.min(40, item.velocidade || 20));
+    const kmh = Math.min(40, item.velocidade);
     const minutos = distancia / (kmh * 1000 / 3600) / 60;
     return { minimo: Math.max(1, Math.floor(minutos + 1)), maximo: Math.max(2, Math.ceil(minutos * 1.45 + 1)) };
   };
-  const ordenados = alvo ? [alvo, ...candidatos.filter((item) => item !== alvo)] : candidatos;
   const escolhidos = ordenados.slice(0, 2).map((item) => ({
     ordem: item.bus.ordem,
-    distanciaMetros: Math.round(paradaMaisProxima.posicao.aoLongo - item.posicao.aoLongo),
-    velocidadeKmh: Math.round(item.velocidade || 20),
+    distanciaMetros: Math.round(distanciaAteParada(item)),
+    velocidadeKmh: Math.round(item.velocidade),
     sinalSegundos: Math.round(item.sinalMs / 1000),
     faixa: faixa(item),
   }));
@@ -121,11 +167,20 @@ function estimarChegada({ rota, paradas, onibus, localizacao, agora = Date.now()
   return {
     disponivel: true,
     estimativa,
+    confiavel: true,
+    comparacaoCaminhada: compararChegadaCaminhando(distanciaUsuarioMetros, estimativa),
     parada: paradaMaisProxima.parada,
     onibus: escolhidos,
-    distanciaUsuarioMetros: posicaoUsuario ? Math.round(Math.abs(paradaMaisProxima.posicao.aoLongo - posicaoUsuario.aoLongo)) : null,
+    distanciaUsuarioMetros,
     aviso: "Estimativa aproximada com base no trajeto oficial e no GPS recente.",
   };
 }
 
-module.exports = { distanciaMetros, rumoGraus, diferencaAngulo, projetarPonto, estimarChegada };
+module.exports = {
+  distanciaMetros,
+  rumoGraus,
+  diferencaAngulo,
+  projetarPonto,
+  estimarChegada,
+  compararChegadaCaminhando,
+};

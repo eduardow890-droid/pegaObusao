@@ -7,7 +7,7 @@
       sources: {
         osm: {
           type: "raster",
-          tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+          tiles: [document.querySelector('meta[name="map-tiles-url"]').content],
           tileSize: 256,
           attribution: "© Colaboradores do OpenStreetMap",
         },
@@ -44,6 +44,9 @@
   const resultadoDetalheEl = document.getElementById("resultado-detalhe");
   const contadorEl = document.getElementById("contador");
   const tentarBtn = document.getElementById("tentar-novamente");
+  const tentarGtfsBtn = document.getElementById("tentar-gtfs");
+  const gtfsStatusEl = document.getElementById("gtfs-status");
+  const favoritosEl = document.getElementById("favoritos");
   const compartilharBtn = document.getElementById("compartilhar");
   const enderecoEl = document.getElementById("endereco");
   const enderecosEl = document.getElementById("enderecos");
@@ -57,6 +60,7 @@
   let timer = null;
   let primeiraVez = true;
   let ultimaBoa = null;    // hora da última atualização bem-sucedida
+  let ultimaConsultaGps = null;
   let linhaAtual = null;
   let intervaloMs = Number(intervaloEl.value);
   let localizacaoMarker = null;
@@ -205,7 +209,19 @@
     catch { return []; }
   }
 
-  function desenharFavoritos() {}
+  function desenharFavoritos() {
+    PegaObusaoFavoritos.desenharFavoritos({
+      documento: document,
+      container: favoritosEl,
+      linhas: favoritos().slice(0, 10),
+      aoAbrir: (linha) => buscar(linha),
+      aoRemover: (linha) => {
+        localStorage.setItem("pegaobusao:favoritos", JSON.stringify(favoritos().filter((item) => item !== linha)));
+        desenharFavoritos();
+        atualizarFavorito();
+      },
+    });
+  }
 
   function atualizarFavorito() {
     const ativo = linhaAtual && favoritos().includes(linhaAtual);
@@ -314,10 +330,17 @@
       });
       sentidoSelect.disabled = false;
       sentidoEl.classList.remove("oculto");
+      tentarGtfsBtn.hidden = true;
+      gtfsStatusEl.hidden = true;
+      gtfsStatusEl.textContent = "";
       mostrar("Escolha o destino para mostrar apenas as paradas e os ônibus daquele sentido.");
       mostrarResultado(linha);
     } catch (erro) {
-      console.warn("GTFS indisponível:", erro.message);
+      if (seq !== sequencia) return;
+      gtfsStatusEl.textContent = `Não foi possível carregar linhas e paradas do GTFS. ${erro.message}`;
+      gtfsStatusEl.hidden = false;
+      tentarBtn.hidden = true;
+      tentarGtfsBtn.hidden = false;
     }
   }
 
@@ -327,8 +350,8 @@
     mapa.fitBounds(limites, { padding: margens(), maxZoom: 15 });
   }
 
-  async function jsonApi(url) {
-    const resposta = await fetch(url);
+  async function jsonApi(url, opcoes) {
+    const resposta = await fetch(url, opcoes);
     const dados = await resposta.json().catch(() => ({}));
     if (!resposta.ok) throw new Error(dados.erro || "Serviço indisponível.");
     return dados;
@@ -365,7 +388,11 @@
     resultadoCardEl.className = "resultado-cartao instrucao";
     estimativaEl.textContent = "Consultando chegada…";
     try {
-      const dados = await jsonApi(`/api/chegada?linha=${encodeURIComponent(linhaAtual)}&variante=${indiceSentido}&lat=${arredondarCoordenada(localizacao.lat)}&lng=${arredondarCoordenada(localizacao.lng)}`);
+      const dados = await jsonApi(`/api/chegada?linha=${encodeURIComponent(linhaAtual)}&variante=${indiceSentido}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat: arredondarCoordenada(localizacao.lat), lng: arredondarCoordenada(localizacao.lng) }),
+      });
       estimativaAtual = dados;
       if (!dados.disponivel) {
         resultadoCardEl.className = "resultado-cartao instrucao";
@@ -375,13 +402,21 @@
         aplicarDestaque([]);
         return;
       }
+      if (dados.confiavel === false) {
+        resultadoCardEl.className = "resultado-cartao instrucao";
+        estimativaEl.textContent = "Sem previsão confiável";
+        resultadoParadaEl.textContent = `Parada ${dados.parada?.nome || "mais próxima"} · ônibus a ${formatarDistancia(dados.onibus?.[0]?.distanciaMetros)}`;
+        resultadoDetalheEl.textContent = dados.motivo || "Velocidade do ônibus indisponível.";
+        aplicarDestaque([]);
+        return;
+      }
       const faixa = dados.estimativa;
       const primeiro = dados.onibus?.[0];
       const seguinte = dados.onibus?.[1];
       resultadoCardEl.className = "resultado-cartao estimativa";
       estimativaEl.textContent = `Chega em ${faixa.minimo} a ${faixa.maximo} min`;
       resultadoParadaEl.textContent = `Parada ${dados.parada.nome || "mais próxima"} · ônibus a ${formatarDistancia(primeiro?.distanciaMetros)}`;
-      resultadoDetalheEl.textContent = `${dados.aviso || `Atualizado há ${primeiro?.sinalSegundos || 0} s`}${seguinte ? " · há outro ônibus depois" : ""}`;
+      resultadoDetalheEl.textContent = `${dados.aviso || `Atualizado há ${primeiro?.sinalSegundos || 0} s`}${seguinte ? " · há outro ônibus depois" : ""}${dados.comparacaoCaminhada ? ` · ${dados.comparacaoCaminhada.mensagem}` : ""}`;
       aplicarDestaque((dados.onibus || []).map((item) => String(item.ordem)));
     } catch (erro) {
       resultadoCardEl.className = "resultado-cartao erro";
@@ -414,7 +449,11 @@
   async function carregarParadas(ponto) {
     mostrar("Buscando paradas próximas…");
     try {
-      const resultados = await jsonApi(`/api/paradas?lat=${arredondarCoordenada(ponto.lat)}&lng=${arredondarCoordenada(ponto.lng)}&raio=800`);
+      const resultados = await jsonApi("/api/paradas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat: arredondarCoordenada(ponto.lat), lng: arredondarCoordenada(ponto.lng), raio: 800 }),
+      });
       limparParadas();
       resultados.forEach((parada) => {
         const el = document.createElement("div");
@@ -428,6 +467,38 @@
     } catch (erro) {
       mostrar(`Não foi possível buscar paradas. ${erro.message}`, true);
     }
+  }
+
+  function definirLocalizacao(coords, buscarParadasAutomaticamente = false) {
+    localizacao = { lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy };
+    pontoEndereco = localizacao;
+    localizacaoMarker?.remove();
+    const el = document.createElement("div");
+    el.setAttribute("aria-label", "Sua localização");
+    el.style.cssText = "width:18px;height:18px;border-radius:50%;background:#2675d8;border:4px solid white;box-shadow:0 1px 6px #333";
+    localizacaoMarker = new maplibregl.Marker({ element: el }).setLngLat([coords.longitude, coords.latitude]).addTo(mapa);
+    paradasBtn.disabled = false;
+    if (buscarParadasAutomaticamente) {
+      mapa.flyTo({ center: [coords.longitude, coords.latitude], zoom: 14 });
+      carregarParadas(localizacao);
+    } else {
+      mapa.flyTo({ center: [coords.longitude, coords.latitude], zoom: 14 });
+      mostrar("Sua localização foi mostrada no mapa.");
+    }
+    atualizarEstimativa();
+    manterTelaAcesa();
+  }
+
+  function buscarParadasSeAutorizado() {
+    if (!navigator.geolocation || !navigator.permissions?.query) return;
+    navigator.permissions.query({ name: "geolocation" }).then((permissao) => {
+      if (permissao.state !== "granted") return;
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => definirLocalizacao(coords, true),
+        () => mostrar("Não foi possível obter sua localização. Verifique a permissão do navegador.", true),
+        { enableHighAccuracy: true, timeout: 10000 },
+      );
+    }).catch((erro) => console.warn("Não foi possível verificar a permissão de localização:", erro));
   }
 
   async function geocodificar(valor) {
@@ -444,7 +515,8 @@
   }
 
   function desenhar(dados, linha) {
-    ultimaBoa = new Date();
+    ultimaConsultaGps = new Date(dados.ultimaConsultaEm || Date.now());
+    ultimaBoa = new Date(dados.obtidoEm || dados.atualizadoEm || Date.now());
     ultimoDadosOnibus = dados;
     mostrarResultado(linha);
     atualizarResumoPainel();
@@ -452,7 +524,9 @@
     dados = { ...dados, total: filtrados.length, onibus: filtrados };
     if (dados.total === 0) {
       limpar();
-      mostrar(`Nenhum ônibus ativo indo para esse destino agora.`);
+      mostrar(dados.desatualizado
+        ? `Nenhum ônibus ativo na última resposta. Última consulta às ${hhmm(ultimaConsultaGps)}; último sucesso ${idadeTexto(ultimaBoa.getTime())}.`
+        : "Nenhum ônibus ativo indo para esse destino agora.");
       return;
     }
     const ordensAtuais = new Set(dados.onibus.map((o) => String(o.ordem)));
@@ -476,15 +550,16 @@
         marcador.__ordem = ordem;
         marcadoresPorOrdem.set(ordem, marcador);
       }
-      el.className = "onibus" + (o.velocidade < 1 ? " parado" : "");
+      const velocidadeTexto = Number.isFinite(o.velocidade) ? `${Math.round(o.velocidade)} km/h` : "velocidade indisponível";
+      el.className = "onibus" + (o.velocidade === 0 ? " parado" : "") + (dados.desatualizado ? " antigo" : "");
       const atualizado = o.hora ? hhmm(new Date(o.hora)) : "horário indisponível";
       const destino = o.destino || o.sentido || "Não informado pela API";
-      el.title = `Ordem ${o.ordem} · ${Math.round(o.velocidade)} km/h · ${atualizado}`;
-      el.setAttribute("aria-label", `Ônibus ${o.ordem}, ${Math.round(o.velocidade)} quilômetros por hora, atualizado às ${atualizado}`);
+      el.title = `Ordem ${o.ordem} · ${velocidadeTexto} · ${atualizado}`;
+      el.setAttribute("aria-label", `Ônibus ${o.ordem}, ${velocidadeTexto}, atualizado às ${atualizado}`);
       el.innerHTML = ICONE_ONIBUS;
       moverSuave(marcador, [o.lng, o.lat]);
       const conteudo = document.createElement("div");
-      [`Linha ${linha}`, `Ordem: ${o.ordem}`, `Destino/sentido: ${destino}`, `Velocidade: ${Math.round(o.velocidade)} km/h`, `Atualização: ${idadeTexto(o.hora)}`].forEach((texto) => {
+      [`Linha ${linha}`, `Ordem: ${o.ordem}`, `Destino/sentido: ${destino}`, `Velocidade: ${velocidadeTexto}`, `Atualização: ${idadeTexto(o.hora)}`].forEach((texto) => {
         const linhaPopup = document.createElement("div");
         linhaPopup.textContent = texto;
         conteudo.append(linhaPopup);
@@ -502,7 +577,10 @@
     const idadeMin = maisNovo ? Math.round((Date.now() - maisNovo) / 60000) : 0;
     const aviso = idadeMin >= 3 ? ` Atenção: o sinal mais recente tem ${idadeMin} min.` : "";
     const refinamento = indiceSentido === null ? " Escolha um sentido para refinar o mapa." : "";
-    mostrar(`${dados.total} ônibus da linha ${linha}. Consulta às ${hhmm(ultimaBoa)}; sinal ${idadeTexto(maisNovo)}.${refinamento}${aviso}`, idadeMin >= 3);
+    const situacao = dados.desatualizado
+      ? `Última consulta às ${hhmm(ultimaConsultaGps)}; usando última consulta com sucesso ${idadeTexto(ultimaBoa.getTime())} (${Math.floor((dados.idadeSegundos || 0) / 60)} min atrás).`
+      : `Última consulta às ${hhmm(ultimaConsultaGps)}; última consulta com sucesso às ${hhmm(ultimaBoa)}.`;
+    mostrar(`${dados.total} ônibus da linha ${linha}. ${situacao} Sinal ${idadeTexto(maisNovo)}.${refinamento}${aviso}`, Boolean(dados.desatualizado) || idadeMin >= 3);
     atualizarEstimativa();
   }
 
@@ -516,6 +594,7 @@
     try {
       const r = await fetch("/api/onibus?linha=" + encodeURIComponent(linha), { signal: meu.signal });
       const dados = await r.json().catch(() => ({}));
+      ultimaConsultaGps = new Date();
       if (seq !== sequencia) return; // o usuário já trocou de linha
       if (!r.ok) throw new Error(dados.erro || "Falha ao buscar ônibus.");
       desenhar(dados, linha);
@@ -524,7 +603,7 @@
       if (seq !== sequencia) return;
       // Marcadores antigos ficam esmaecidos para não parecerem atuais
       marcadores.forEach((m) => m.getElement().classList.add("antigo"));
-      const quando = ultimaBoa ? ` Última posição boa: ${hhmm(ultimaBoa)} (ônibus esmaecidos).` : "";
+      const quando = ultimaBoa ? ` Última consulta: ${hhmm(ultimaConsultaGps || new Date())}; última consulta com sucesso ${idadeTexto(ultimaBoa.getTime())} (ônibus esmaecidos).` : "";
       const motivo = e.name === "AbortError" ? "Tempo esgotado." : e.message;
       mostrar(`⚠ Não consegui atualizar. ${motivo}${quando}`, true);
     } finally {
@@ -621,6 +700,12 @@
     mostrar("Atualizando…");
     atualizar(linhaAtual, sequencia);
   });
+  tentarGtfsBtn.addEventListener("click", () => {
+    if (!linhaAtual) return;
+    tentarGtfsBtn.disabled = true;
+    statusEl.textContent = "Carregando novamente os dados de linhas e paradas…";
+    carregarDadosDaLinha(linhaAtual, sequencia).finally(() => { tentarGtfsBtn.disabled = false; });
+  });
   intervaloEl.addEventListener("change", () => {
     intervaloMs = Number(intervaloEl.value);
     if (linhaAtual) mostrar(`Atualização automática a cada ${intervaloMs / 1000}s.`);
@@ -637,19 +722,7 @@
   document.getElementById("localizacao").addEventListener("click", () => {
     if (!navigator.geolocation) return mostrar("Seu navegador não oferece localização.", true);
     mostrar("Obtendo sua localização…");
-    navigator.geolocation.getCurrentPosition(({ coords }) => {
-      localizacao = { lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy };
-      pontoEndereco = localizacao;
-      localizacaoMarker?.remove();
-      const el = document.createElement("div");
-      el.setAttribute("aria-label", "Sua localização");
-      el.style.cssText = "width:18px;height:18px;border-radius:50%;background:#2675d8;border:4px solid white;box-shadow:0 1px 6px #333";
-      localizacaoMarker = new maplibregl.Marker({ element: el }).setLngLat([coords.longitude, coords.latitude]).addTo(mapa);
-      mapa.flyTo({ center: [coords.longitude, coords.latitude], zoom: 14 });
-      mostrar("Sua localização foi mostrada no mapa.");
-      atualizarEstimativa();
-      manterTelaAcesa();
-    }, () => mostrar("Não foi possível obter sua localização. Verifique a permissão do navegador.", true), { enableHighAccuracy: true, timeout: 10000 });
+    navigator.geolocation.getCurrentPosition(({ coords }) => definirLocalizacao(coords), () => mostrar("Não foi possível obter sua localização. Verifique a permissão do navegador.", true), { enableHighAccuracy: true, timeout: 10000 });
   });
   document.getElementById("buscar-endereco").addEventListener("click", async () => {
     const valor = enderecoEl.value.trim();
@@ -699,4 +772,5 @@
   desenharFavoritos();
   const linhaInicial = new URLSearchParams(location.search).get("linha");
   if (linhaInicial) buscar(linhaInicial);
+  buscarParadasSeAutorizado();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
