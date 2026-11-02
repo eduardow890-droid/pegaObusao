@@ -914,6 +914,10 @@ input::placeholder {
     background: var(--painel-noturno);
   }
 
+  .resultado-cartao.instrucao {
+    background: var(--painel-noturno);
+  }
+
   .resultado-cartao strong,
   .resultado-cartao span {
     color: var(--texto-noturno);
