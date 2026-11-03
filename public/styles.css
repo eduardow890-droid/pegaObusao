@@ -117,35 +117,24 @@ summary:focus-visible,
   box-shadow: var(--sombra);
 }
 
-.marca img {
+.marca > img {
   display: block;
   width: 40px;
   height: 40px;
   flex: none;
 }
 
-.marca .nome {
-  color: var(--lima);
-  font-family: var(--fonte-titulo);
-  font-size: 20px;
-  font-weight: 400;
-  line-height: 1.15;
-  white-space: nowrap;
-  text-shadow:
-    -2px -2px 0 var(--mata),
-    0 -2px 0 var(--mata),
-    2px -2px 0 var(--mata),
-    -2px 0 0 var(--mata),
-    2px 0 0 var(--mata),
-    -2px 2px 0 var(--mata),
-    0 2px 0 var(--mata),
-    2px 2px 0 var(--mata),
-    4px 4px 0 var(--mata);
+.marca-identidade {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
 }
 
-.marca .nome b {
-  color: var(--lima);
-  font-weight: 400;
+.marca .logo-titulo {
+  display: block;
+  width: 180px;
+  height: auto;
+  flex: none;
 }
 
 .marca .slogan {
@@ -789,13 +778,13 @@ input::placeholder {
     padding: 5px 9px 5px 5px;
   }
 
-  .marca img {
+  .marca > img {
     width: 34px;
     height: 34px;
   }
 
-  .marca .nome {
-    font-size: 18px;
+  .marca .logo-titulo {
+    width: 150px;
   }
 
   .painel {
@@ -918,6 +907,11 @@ input::placeholder {
     background: var(--painel-noturno);
   }
 
+  .resultado-cartao.instrucao strong,
+  .resultado-cartao.instrucao span {
+    color: var(--texto-noturno);
+  }
+
   .resultado-cartao strong,
   .resultado-cartao span {
     color: var(--texto-noturno);
@@ -925,6 +919,11 @@ input::placeholder {
 
   .resultado-cartao.estimativa {
     background: var(--creme-noturno);
+  }
+
+  .resultado-cartao.estimativa strong,
+  .resultado-cartao.estimativa span {
+    color: var(--texto-noturno);
   }
 
   .resultado-cartao.erro,

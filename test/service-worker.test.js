@@ -39,9 +39,25 @@ test("service worker instala shell local com scripts, estilos, ícone e manifest
   let aguardado;
   listeners.install({ waitUntil: (promessa) => { aguardado = promessa; } });
   await aguardado;
-  for (const arquivo of ["/", "/app.js", "/favoritos.js", "/map-match.js", "/styles.css", "/icon.svg", "/manifest.json"]) {
+  for (const arquivo of [
+    "/", "/app.js", "/favoritos.js", "/map-match.js", "/styles.css", "/icon.svg", "/manifest.json",
+    "/favicon.ico", "/favicon-16.png", "/favicon-32.png", "/apple-touch-icon.png",
+    "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-192.png", "/icons/icon-maskable-512.png",
+    "/logo-titulo-600.png", "/og-image.png",
+  ]) {
     assert.ok(cache.has(arquivo), `cacheia ${arquivo}`);
   }
+});
+
+test("imagens instaladas também são respondidas pelo cache offline", async () => {
+  const image = { cached: true };
+  const { listeners } = iniciarServiceWorker({
+    cacheInicial: new Map([["https://app.example/icons/icon-192.png", image]]),
+    rede: async () => { throw new Error("não deve consultar a rede"); },
+  });
+  const requisicao = pedido("/icons/icon-192.png");
+  listeners.fetch(requisicao);
+  assert.equal(await requisicao.resposta, image);
 });
 
 test("assets usam cache-first e o GPS não é armazenado como dado atual", async () => {

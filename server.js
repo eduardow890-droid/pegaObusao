@@ -30,7 +30,16 @@ function numero(valor) {
   return Number(valor);
 }
 
-const tipos = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json; charset=utf-8" };
+const tipos = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript",
+  ".css": "text/css",
+  ".svg": "image/svg+xml",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".woff2": "font/woff2",
+};
 
 async function buscarParadasDaFonte(lat, lng, raio) {
   try { return buscarParadasLocais(lat, lng, raio); }

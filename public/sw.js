@@ -1,5 +1,11 @@
-const CACHE = "pegaobusao-shell-v4";
-const ARQUIVOS = ["/", "/app.js", "/favoritos.js", "/map-match.js", "/styles.css", "/styles.css?v=pixel-brt-1", "/icon.svg", "/manifest.json", "/fonts/bungee-latin.woff2", "/fonts/rubik-latin.woff2"];
+const CACHE = "pegaobusao-shell-v6";
+const ARQUIVOS = [
+  "/", "/app.js", "/favoritos.js", "/map-match.js", "/styles.css", "/styles.css?v=pixel-brt-2",
+  "/icon.svg", "/favicon.ico", "/favicon-16.png", "/favicon-32.png", "/apple-touch-icon.png",
+  "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-192.png", "/icons/icon-maskable-512.png",
+  "/logo-titulo-600.png", "/og-image.png", "/manifest.json",
+  "/fonts/bungee-latin.woff2", "/fonts/rubik-latin.woff2",
+];
 const API_OFFLINE = new Set(["/api/linha"]);
 
 self.addEventListener("install", (evento) => {
@@ -38,7 +44,7 @@ self.addEventListener("fetch", (evento) => {
     })());
     return;
   }
-  if (/\.(?:js|css|svg|json)$/.test(url.pathname) || url.pathname === "/") {
+  if (/\.(?:js|css|svg|json|png|ico)$/.test(url.pathname) || url.pathname === "/") {
     evento.respondWith((async () => {
       const guardada = await caches.match(evento.request);
       if (guardada) return guardada;

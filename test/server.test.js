@@ -158,10 +158,22 @@ test("serve a página inicial e bloqueia caminho fora de public", async () => {
     const html = await pagina.text();
     assert.match(html, /PegaObusão/);
     assert.match(html, /tile\.openstreetmap\.org\/\{z\}\/\{x\}\/\{y\}\.png/);
+    assert.match(html, /apple-touch-icon\.png/);
+    assert.match(html, /logo-titulo-600\.png/);
+    assert.match(html, /og:description/);
     assert.doesNotMatch(html, /__MAP_TILES_URL__/);
     const icone = await fetch(`${base}/icon.svg`);
     assert.equal(icone.status, 200);
     assert.match(icone.headers.get("content-type"), /image\/svg\+xml/);
+    const iconePwa = await fetch(`${base}/icons/icon-192.png`);
+    assert.equal(iconePwa.status, 200);
+    assert.match(iconePwa.headers.get("content-type"), /image\/png/);
+    const fonte = await fetch(`${base}/fonts/rubik-latin.woff2`);
+    assert.equal(fonte.status, 200);
+    assert.match(fonte.headers.get("content-type"), /font\/woff2/);
+    const manifest = await (await fetch(`${base}/manifest.json`)).json();
+    assert.equal(manifest.theme_color, "#14202E");
+    assert.ok(manifest.icons.some((item) => item.src === "/icons/icon-maskable-512.png" && item.purpose === "maskable"));
 
     const fora = await fetch(`${base}/%2e%2e%2fserver.js`);
     assert.equal(fora.status, 403);

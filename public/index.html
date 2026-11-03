@@ -6,12 +6,21 @@
 <meta name="theme-color" content="#14202E">
 <meta name="map-tiles-url" content="__MAP_TILES_URL__">
 <title>PegaObusão · ônibus do Rio ao vivo</title>
-<link rel="icon" href="/icon.svg">
+<meta name="description" content="Linhas, paradas e previsão de chegada dos ônibus do Rio.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="PegaObusão · ônibus do Rio ao vivo">
+<meta property="og:description" content="Linhas, paradas e previsão de chegada dos ônibus do Rio.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="preload" href="/fonts/bungee-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/rubik-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V" crossorigin="anonymous">
-<link rel="stylesheet" href="/styles.css?v=pixel-brt-1">
+<link rel="stylesheet" href="/styles.css?v=pixel-brt-2">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" integrity="sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj" crossorigin="anonymous"></script>
 </head>
 <body>
@@ -19,7 +28,10 @@
 
 <header class="marca" aria-label="PegaObusão">
   <img src="/icon.svg" alt="" width="40" height="40">
-  <div class="nome">Pega<b>Obusão</b><span class="slogan">ônibus do Rio ao vivo</span></div>
+  <div class="marca-identidade">
+    <img class="logo-titulo" src="/logo-titulo-600.png" alt="PegaObusão" width="600" height="115">
+    <span class="slogan">ônibus do Rio ao vivo</span>
+  </div>
 </header>
 
 <form class="painel estado-aberto" id="form" aria-label="Consulta de ônibus">
