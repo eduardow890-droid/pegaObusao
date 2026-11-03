@@ -70,5 +70,32 @@
     };
   }
 
-  return { distanciaMetros, rumoGraus, diferencaAngulo, projetarPonto, ajustarAoTrajeto };
+  function selecionarIndicesEspacados(pontos, distanciaMinimaPx = 44) {
+    const selecionados = [];
+    let anterior = null;
+    for (const [indice, ponto] of pontos.entries()) {
+      if (!Number.isFinite(ponto?.x) || !Number.isFinite(ponto?.y)) continue;
+      if (!anterior || Math.hypot(ponto.x - anterior.x, ponto.y - anterior.y) >= distanciaMinimaPx) {
+        selecionados.push(indice);
+        anterior = ponto;
+      }
+    }
+    return selecionados;
+  }
+
+  function dentroDaAreaAtendida(ponto) {
+    return Number.isFinite(ponto?.lat) && Number.isFinite(ponto?.lng)
+      && ponto.lat >= -23.2 && ponto.lat <= -22.6
+      && ponto.lng >= -43.9 && ponto.lng <= -42.9;
+  }
+
+  return {
+    distanciaMetros,
+    rumoGraus,
+    diferencaAngulo,
+    projetarPonto,
+    ajustarAoTrajeto,
+    selecionarIndicesEspacados,
+    dentroDaAreaAtendida,
+  };
 }));

@@ -59,6 +59,14 @@ test("usuário chega depois do ônibus e não compara sem dados válidos", () =>
   assert.equal(compararChegadaCaminhando(null, { minimo: 6, maximo: 8 }), null);
 });
 
+test("não calcula tempo de caminhada quando a parada está muito distante", () => {
+  const comparacao = compararChegadaCaminhando(2500, { minimo: 6, maximo: 8 });
+  assert.equal(comparacao.status, "distante");
+  assert.equal(comparacao.minutosCaminhando, null);
+  assert.match(comparacao.mensagem, /2,5 km em linha reta/);
+  assert.match(comparacao.mensagem, /não exibida/);
+});
+
 test("velocidade desconhecida também não gera previsão numérica", () => {
   const dados = estimarChegada({
     rota, paradas: [parada], agora, localizacao: { lat: -22.9, lng: -43.2 },

@@ -219,6 +219,57 @@ test("endpoints de endereço, paradas e rota validam e encaminham dados", async 
   });
 });
 
+test("endpoints POST rejeitam tipo de conteúdo, JSON inválido, corpo grande e tipos numéricos inválidos", async () => {
+  let chamadas = 0;
+  await comServidor({ buscarParadasProximas: async () => (chamadas++, []) }, async (base) => {
+    const semContentType = await fetch(`${base}/api/paradas`, {
+      method: "POST",
+      body: JSON.stringify({ lat: -22.9, lng: -43.2 }),
+    });
+    assert.equal(semContentType.status, 415);
+
+    const jsonInvalido = await fetch(`${base}/api/paradas`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{",
+    });
+    assert.equal(jsonInvalido.status, 400);
+
+    const corpoGrande = await fetch(`${base}/api/paradas`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: -22.9, lng: -43.2, extra: "x".repeat(5000) }),
+    });
+    assert.equal(corpoGrande.status, 413);
+
+    const tipoInvalido = await fetch(`${base}/api/paradas`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: false, lng: -43.2 }),
+    });
+    assert.equal(tipoInvalido.status, 400);
+    assert.equal(chamadas, 0);
+  });
+});
+
+test("falhas do serviço de rota não registram coordenadas nos logs", async () => {
+  const logs = [];
+  await comServidor({
+    calcularRotaExterna: async () => { throw new Error("falha em https://router.example/-43.2,-22.9"); },
+    logger: { error: (...valores) => logs.push(valores.join(" ")) },
+  }, async (base) => {
+    const resposta = await fetch(`${base}/api/rota`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ origem: { lat: -22.9, lng: -43.2 }, destino: { lat: -22.8, lng: -43.1 } }),
+    });
+    assert.equal(resposta.status, 502);
+    assert.equal(logs.join(" ").includes("-43.2"), false);
+    assert.equal(logs.join(" ").includes("-22.9"), false);
+    assert.match(logs.join(" "), /Falha na rota externa/);
+  });
+});
+
 test("endpoint de linha retorna dados GTFS e trata linha inexistente", async () => {
   const buscarLinhaGtfs = (linha) => linha === "485"
     ? { linha, variantes: [{ destino: "Destino teste", paradas: [{ id: "P1" }], rota: { type: "LineString", coordinates: [] } }] }

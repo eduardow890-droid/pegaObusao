@@ -77,6 +77,7 @@
   let emSegundoPlano = false;
 
   function arredondarCoordenada(valor) { return Math.round(valor * 1000) / 1000; }
+  mapa.on("moveend", atualizarVisibilidadeParadasLinha);
 
   function aplicarEstado(estado, persistir = true) {
     const valido = ["aberto", "compacto", "oculto"].includes(estado) ? estado : "aberto";
@@ -179,9 +180,22 @@
     paradasLinha = [];
   }
 
-  function mostrar(texto, erro) {
+  function atualizarVisibilidadeParadasLinha() {
+    if (!paradasLinha.length) return;
+    const pontos = paradasLinha.map((marcador) => mapa.project(marcador.getLngLat()));
+    const visiveis = new Set(PegaObusaoMapa.selecionarIndicesEspacados(pontos, 44));
+    paradasLinha.forEach((marcador, indice) => {
+      const elemento = marcador.getElement();
+      const oculto = !visiveis.has(indice);
+      elemento.style.display = oculto ? "none" : "";
+      elemento.setAttribute("aria-hidden", String(oculto));
+    });
+  }
+
+  function mostrar(texto, erro, aviso = false) {
     statusEl.textContent = texto;
     statusEl.classList.toggle("erro", !!erro);
+    statusEl.classList.toggle("aviso", !erro && aviso);
     statusEl.classList.toggle("secundario", !!linhaAtual);
     tentarBtn.hidden = !erro || !linhaAtual;
     if (resultadoCardEl && linhaAtual) {
@@ -285,6 +299,7 @@
         .addTo(mapa);
       paradasLinha.push(marcador);
     });
+    atualizarVisibilidadeParadasLinha();
   }
 
   function sentidoDoOnibus(onibus) {
@@ -412,6 +427,14 @@
       estimativaEl.textContent = "Localização pouco precisa";
       resultadoParadaEl.textContent = "Sua localização está pouco precisa.";
       resultadoDetalheEl.textContent = "Digite um endereço para melhorar o resultado.";
+      return;
+    }
+    if (!PegaObusaoMapa.dentroDaAreaAtendida(localizacao)) {
+      resultadoCardEl.className = "resultado-cartao instrucao";
+      estimativaEl.textContent = "Fora da área atendida";
+      resultadoParadaEl.textContent = "As estimativas estão disponíveis somente na região do Rio.";
+      resultadoDetalheEl.textContent = "Busque uma linha ou parada dentro da área de cobertura.";
+      aplicarDestaque([]);
       return;
     }
     resultadoCardEl.className = "resultado-cartao instrucao";
@@ -616,7 +639,11 @@
     const avisoTrajeto = dados.foraDoTrajeto
       ? ` ${dados.foraDoTrajeto} posição(ões) muito distantes do trajeto foram ocultadas.`
       : "";
-    mostrar(`${dados.total} ônibus da linha ${linha}. ${situacao} Sinal ${idadeTexto(maisNovo)}.${refinamento}${aviso}${avisoTrajeto}`, Boolean(dados.desatualizado) || idadeMin >= 3 || Boolean(dados.foraDoTrajeto));
+    mostrar(
+      `${dados.total} ônibus da linha ${linha}. ${situacao} Sinal ${idadeTexto(maisNovo)}.${refinamento}${aviso}${avisoTrajeto}`,
+      false,
+      Boolean(dados.desatualizado) || idadeMin >= 3 || Boolean(dados.foraDoTrajeto),
+    );
     atualizarEstimativa();
   }
 
@@ -641,7 +668,7 @@
       marcadores.forEach((m) => m.getElement().classList.add("antigo"));
       const quando = ultimaBoa ? ` Última consulta: ${hhmm(ultimaConsultaGps || new Date())}; última consulta com sucesso ${idadeTexto(ultimaBoa.getTime())} (ônibus esmaecidos).` : "";
       const motivo = e.name === "AbortError" ? "Tempo esgotado." : e.message;
-      mostrar(`⚠ Não consegui atualizar. ${motivo}${quando}`, true);
+      mostrar(`Não consegui atualizar. ${motivo}${quando}`, true);
     } finally {
       clearTimeout(prazo);
       if (seq === sequencia) buscarBtn.disabled = false;

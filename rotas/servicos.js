@@ -7,8 +7,24 @@ function json(res, status, corpo) {
 }
 
 function numero(valor) {
-  if (valor === null || String(valor).trim() === "") return NaN;
+  if (typeof valor !== "number" && typeof valor !== "string") return NaN;
+  if (typeof valor === "string" && !/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(valor.trim())) return NaN;
   return Number(valor);
+}
+
+async function lerCorpoJson(req, res, mensagem) {
+  const contentType = String(req.headers["content-type"] || "").split(";", 1)[0].trim().toLowerCase();
+  if (contentType !== "application/json") {
+    json(res, 415, { erro: "O Content-Type deve ser application/json." });
+    return null;
+  }
+  try {
+    return await lerJson(req);
+  } catch (erro) {
+    const excedido = erro.code === "BODY_TOO_LARGE";
+    json(res, excedido ? 413 : 400, { erro: excedido ? "O corpo da requisição excede o limite permitido." : mensagem });
+    return null;
+  }
 }
 
 async function atender({ req, res, url, buscarEndereco, buscarParadas, calcularRota, permitir, obterIp = (requisicao) => requisicao.socket.remoteAddress || "desconhecido", retryAfter, dentroDoRio, registrarErro, logger }) {
@@ -28,13 +44,8 @@ async function atender({ req, res, url, buscarEndereco, buscarParadas, calcularR
       return true;
     }
     if (url.pathname === "/api/paradas") {
-      let corpo;
-      try {
-        corpo = await lerJson(req);
-      } catch {
-        json(res, 400, { erro: "Envie latitude e longitude em um corpo JSON válido." });
-        return true;
-      }
+      const corpo = await lerCorpoJson(req, res, "Envie latitude e longitude em um corpo JSON válido.");
+      if (!corpo) return true;
       const lat = numero(corpo.lat);
       const lng = numero(corpo.lng);
       const valorRaio = corpo.raio;
@@ -46,13 +57,8 @@ async function atender({ req, res, url, buscarEndereco, buscarParadas, calcularR
       json(res, 200, await buscarParadas(lat, lng, raio));
       return true;
     }
-    let corpo;
-    try {
-      corpo = await lerJson(req);
-    } catch {
-      json(res, 400, { erro: "Envie origem e destino em um corpo JSON válido." });
-      return true;
-    }
+    const corpo = await lerCorpoJson(req, res, "Envie origem e destino em um corpo JSON válido.");
+    if (!corpo) return true;
     const origem = { lat: numero(corpo.origem?.lat), lng: numero(corpo.origem?.lng) };
     const destino = { lat: numero(corpo.destino?.lat), lng: numero(corpo.destino?.lng) };
     if ([origem, destino].some((p) => !Number.isFinite(p.lat) || !Number.isFinite(p.lng) || !dentroDoRio(p))) {
@@ -62,7 +68,8 @@ async function atender({ req, res, url, buscarEndereco, buscarParadas, calcularR
     json(res, 200, await calcularRota(origem, destino));
   } catch (erro) {
     registrarErro();
-    logger.error(`Falha na rota externa (${url.pathname}):`, erro);
+    const tipo = ["AbortError", "TimeoutError"].includes(erro?.name) ? erro.name : "Error";
+    logger.error(`Falha na rota externa (${url.pathname}) [${tipo}]`);
     json(res, 502, { erro: "Serviço externo indisponível no momento." });
   }
   return true;

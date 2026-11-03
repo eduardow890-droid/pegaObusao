@@ -1,7 +1,8 @@
-const CACHE = "pegaobusao-shell-v6";
+const CACHE = "pegaobusao-shell-v7";
 const ARQUIVOS = [
-  "/", "/app.js", "/favoritos.js", "/map-match.js", "/styles.css", "/styles.css?v=pixel-brt-2",
-  "/icon.svg", "/favicon.ico", "/favicon-16.png", "/favicon-32.png", "/apple-touch-icon.png",
+  "/", "/app.js", "/app.js?v=pixel-brt-3", "/favoritos.js", "/map-match.js", "/map-match.js?v=pixel-brt-3",
+  "/styles.css", "/styles.css?v=pixel-brt-3",
+  "/favicon.ico", "/favicon-16.png", "/favicon-32.png", "/apple-touch-icon.png",
   "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-192.png", "/icons/icon-maskable-512.png",
   "/logo-titulo-600.png", "/og-image.png", "/manifest.json",
   "/fonts/bungee-latin.woff2", "/fonts/rubik-latin.woff2",

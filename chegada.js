@@ -1,5 +1,6 @@
 "use strict";
 const { distanciaMetros, rumoGraus, diferencaAngulo, projetarPonto } = require("./public/map-match");
+const DISTANCIA_MAXIMA_COMPARACAO_CAMINHADA_METROS = 2000;
 
 // Funções puras para estimativas ao longo do trajeto GTFS.
 // A posição anterior é opcional: quando não existe, não afirmamos que o veículo
@@ -13,6 +14,16 @@ function velocidadeValida(kmh) {
 function compararChegadaCaminhando(distanciaUsuarioMetros, estimativaOnibus) {
   if (!Number.isFinite(distanciaUsuarioMetros) || !estimativaOnibus
     || !Number.isFinite(estimativaOnibus.minimo) || !Number.isFinite(estimativaOnibus.maximo)) return null;
+  if (distanciaUsuarioMetros > DISTANCIA_MAXIMA_COMPARACAO_CAMINHADA_METROS) {
+    const distancia = distanciaUsuarioMetros >= 1000
+      ? `${(distanciaUsuarioMetros / 1000).toFixed(1).replace(".", ",")} km`
+      : `${Math.round(distanciaUsuarioMetros)} m`;
+    return {
+      minutosCaminhando: null,
+      status: "distante",
+      mensagem: `A parada está a ${distancia} em linha reta; comparação de caminhada não exibida.`,
+    };
+  }
   const minutosCaminhando = Math.ceil(Math.max(0, distanciaUsuarioMetros) / 1.2 / 60);
   const antes = minutosCaminhando <= estimativaOnibus.minimo;
   const depois = minutosCaminhando > estimativaOnibus.maximo;
@@ -20,10 +31,10 @@ function compararChegadaCaminhando(distanciaUsuarioMetros, estimativaOnibus) {
     minutosCaminhando,
     status: antes ? "antes" : depois ? "depois" : "incerto",
     mensagem: antes
-      ? `O ônibus chega em ${estimativaOnibus.minimo} min, você leva ${minutosCaminhando} min a pé: saia agora.`
+      ? `O ônibus chega em ${estimativaOnibus.minimo} min, você leva ${minutosCaminhando} min a pé (distância em linha reta): saia agora.`
       : depois
-        ? `Você leva ${minutosCaminhando} min a pé e pode chegar depois do ônibus.`
-        : `Você leva ${minutosCaminhando} min a pé; a chegada do ônibus está em uma faixa incerta.`,
+        ? `Você leva ${minutosCaminhando} min a pé (distância em linha reta) e pode chegar depois do ônibus.`
+        : `Você leva ${minutosCaminhando} min a pé (distância em linha reta); a chegada do ônibus está em uma faixa incerta.`,
   };
 }
 

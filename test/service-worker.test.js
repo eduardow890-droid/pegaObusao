@@ -40,13 +40,15 @@ test("service worker instala shell local com scripts, estilos, ícone e manifest
   listeners.install({ waitUntil: (promessa) => { aguardado = promessa; } });
   await aguardado;
   for (const arquivo of [
-    "/", "/app.js", "/favoritos.js", "/map-match.js", "/styles.css", "/icon.svg", "/manifest.json",
+    "/", "/app.js", "/app.js?v=pixel-brt-3", "/favoritos.js", "/map-match.js", "/map-match.js?v=pixel-brt-3",
+    "/styles.css", "/styles.css?v=pixel-brt-3", "/favicon-32.png", "/manifest.json",
     "/favicon.ico", "/favicon-16.png", "/favicon-32.png", "/apple-touch-icon.png",
     "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-192.png", "/icons/icon-maskable-512.png",
     "/logo-titulo-600.png", "/og-image.png",
   ]) {
     assert.ok(cache.has(arquivo), `cacheia ${arquivo}`);
   }
+  assert.equal(cache.has("/icon.svg"), false);
 });
 
 test("imagens instaladas também são respondidas pelo cache offline", async () => {

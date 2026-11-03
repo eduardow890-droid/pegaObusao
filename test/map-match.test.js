@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ajustarAoTrajeto, projetarPonto } = require("../public/map-match");
+const { ajustarAoTrajeto, projetarPonto, selecionarIndicesEspacados, dentroDaAreaAtendida } = require("../public/map-match");
 
 const rota = [[-43.2, -22.9], [-43.19, -22.9]];
 
@@ -31,4 +31,21 @@ test("escolhe a variante mais próxima entre sentidos da linha", () => {
 
 test("não tenta ajustar quando não há shapes utilizáveis", () => {
   assert.equal(ajustarAoTrajeto({ lng: -43.2, lat: -22.9 }, [[], null]), null);
+});
+
+test("reduz paradas sobrepostas respeitando o espaçamento visual", () => {
+  const visiveis = selecionarIndicesEspacados([
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+    { x: 45, y: 0 },
+    { x: 60, y: 0 },
+    { x: 90, y: 0 },
+  ]);
+  assert.deepEqual(visiveis, [0, 2, 4]);
+});
+
+test("reconhece localizações dentro e fora da área atendida", () => {
+  assert.equal(dentroDaAreaAtendida({ lat: -22.9, lng: -43.2 }), true);
+  assert.equal(dentroDaAreaAtendida({ lat: -22.5, lng: -43.2 }), false);
+  assert.equal(dentroDaAreaAtendida({ lat: NaN, lng: -43.2 }), false);
 });
