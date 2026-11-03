@@ -39,7 +39,7 @@ test("service worker instala shell local com scripts, estilos, ícone e manifest
   let aguardado;
   listeners.install({ waitUntil: (promessa) => { aguardado = promessa; } });
   await aguardado;
-  for (const arquivo of ["/", "/app.js", "/favoritos.js", "/styles.css", "/icon.svg", "/manifest.json"]) {
+  for (const arquivo of ["/", "/app.js", "/favoritos.js", "/map-match.js", "/styles.css", "/icon.svg", "/manifest.json"]) {
     assert.ok(cache.has(arquivo), `cacheia ${arquivo}`);
   }
 });

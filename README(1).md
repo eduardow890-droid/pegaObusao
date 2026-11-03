@@ -107,6 +107,7 @@ estimada a 1,2 m/s com a faixa prevista do ônibus.
 A rota de planejamento A-B continua sendo geográfica e não representa uma rota de transporte público. A interface informa explicitamente que o tempo é estimado para carro.
 A previsão por parada é aproximada, usa a posição atual do GPS e velocidade do veículo, e não considera
 trânsito ou tempo parado. A localização aproximada é enviada ao backend por POST para calcular a ETA e não é persistida pela aplicação. Para uma previsão oficial, será necessário integrar GTFS-Realtime da SMTR.
+No mapa, posições de ônibus a até 300 m do shape da variante são projetadas sobre o trajeto; pontos mais distantes são ocultados e informados no status, pois podem indicar GPS incorreto ou shape desatualizado. O zoom não altera as coordenadas, apenas torna mais visível a diferença entre o GPS bruto e a rota.
 
 Se a API mudar seu contrato, a validação em `lib.js` falha com erro em vez de tratar uma resposta inválida
 como se não houvesse ônibus. A paginação também falha explicitamente se ultrapassar o limite de segurança.
@@ -127,6 +128,7 @@ GPS_URL="https://endereco-atual" node server.js
 - `scripts/atualizar-gtfs.js`: download e conversão automatizados
 - `scripts/gtfs-lock.js`: bloqueio contra downloads/importações simultâneos
 - `public/index.html`: mapa e busca de linha
+- `public/map-match.js`: projeção e ajuste visual dos ônibus sobre o shape GTFS
 - `public/manifest.json` e `public/sw.js`: instalação e cache básico como PWA
 
 ## Organização e manutenção

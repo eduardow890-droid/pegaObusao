@@ -16,6 +16,7 @@
     },
   });
   mapa.addControl(new maplibregl.NavigationControl(), "bottom-right");
+  const DISTANCIA_MAXIMA_AJUSTE_ROTA_METROS = 300;
 
   const ICONE_ONIBUS =
     '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="15" rx="3" fill="#14202E"/>' +
@@ -255,7 +256,24 @@
       fonte.setData(geojson);
     } else {
       mapa.addSource("rota-linha", { type: "geojson", data: geojson });
-      mapa.addLayer({ id: "rota-linha", type: "line", source: "rota-linha", paint: { "line-color": "#F2B01E", "line-width": 5, "line-opacity": .75 } });
+    }
+    if (!mapa.getLayer("rota-linha-contorno")) {
+      mapa.addLayer({
+        id: "rota-linha-contorno",
+        type: "line",
+        source: "rota-linha",
+        layout: { "line-join": "miter", "line-cap": "butt" },
+        paint: { "line-color": "#14202E", "line-width": 10, "line-opacity": .95 },
+      });
+    }
+    if (!mapa.getLayer("rota-linha")) {
+      mapa.addLayer({
+        id: "rota-linha",
+        type: "line",
+        source: "rota-linha",
+        layout: { "line-join": "miter", "line-cap": "butt" },
+        paint: { "line-color": "#F2B01E", "line-width": 5, "line-opacity": .95 },
+      });
     }
     variante.paradas.forEach((parada, ordem) => {
       const el = document.createElement("div");
@@ -267,12 +285,6 @@
         .addTo(mapa);
       paradasLinha.push(marcador);
     });
-  }
-
-  function distanciaAoQuadrado(ponto, coordenada) {
-    const dx = (ponto.lng - coordenada[0]) * Math.cos(ponto.lat * Math.PI / 180);
-    const dy = ponto.lat - coordenada[1];
-    return dx * dx + dy * dy;
   }
 
   function sentidoDoOnibus(onibus) {
@@ -293,14 +305,31 @@
     dadosLinhaAtual.variantes.forEach((variante, indice) => {
       const coordenadas = variante.rota?.coordinates || [];
       if (!coordenadas.length) return;
-      const distancia = Math.min(...coordenadas.map((coordenada) => distanciaAoQuadrado(onibus, coordenada)));
-      if (!melhor || distancia < melhor.distancia) melhor = { indice, distancia };
+      const posicao = PegaObusaoMapa.projetarPonto(coordenadas, onibus);
+      if (posicao && (!melhor || posicao.distanciaMetros < melhor.distancia)) {
+        melhor = { indice, distancia: posicao.distanciaMetros };
+      }
     });
-    return melhor?.indice ?? null;
+    return melhor && melhor.distancia <= 1500 ? melhor.indice : null;
   }
 
   function onibusDoSentido(onibus) {
     return onibus.filter((item) => sentidoDoOnibus(item) === indiceSentido);
+  }
+
+  function ajustarOnibusAoTrajeto(onibus) {
+    const variantes = dadosLinhaAtual?.variantes || [];
+    if (!variantes.some((variante) => variante.rota?.coordinates?.length >= 2)) return onibus;
+    const indiceVariante = indiceSentido === null ? sentidoDoOnibus(onibus) : indiceSentido;
+    const coordenadas = variantes[indiceVariante]?.rota?.coordinates || [];
+    if (coordenadas.length < 2) return null;
+    const posicao = PegaObusaoMapa.ajustarAoTrajeto(
+      onibus,
+      [coordenadas],
+      DISTANCIA_MAXIMA_AJUSTE_ROTA_METROS,
+    );
+    if (!posicao) return null;
+    return { ...onibus, lat: posicao.lat, lng: posicao.lng };
   }
 
   async function carregarDadosDaLinha(linha, seq) {
@@ -520,11 +549,15 @@
     ultimoDadosOnibus = dados;
     mostrarResultado(linha);
     atualizarResumoPainel();
-    const filtrados = indiceSentido === null ? dados.onibus : onibusDoSentido(dados.onibus);
-    dados = { ...dados, total: filtrados.length, onibus: filtrados };
+    const porSentido = indiceSentido === null ? dados.onibus : onibusDoSentido(dados.onibus);
+    const alinhados = porSentido.map(ajustarOnibusAoTrajeto).filter(Boolean);
+    const foraDoTrajeto = porSentido.length - alinhados.length;
+    dados = { ...dados, total: alinhados.length, foraDoTrajeto, onibus: alinhados };
     if (dados.total === 0) {
       limpar();
-      mostrar(dados.desatualizado
+      mostrar(foraDoTrajeto
+        ? `Posições de ônibus muito distantes do trajeto foram ocultadas (${foraDoTrajeto}). Aguardando GPS mais preciso.`
+        : dados.desatualizado
         ? `Nenhum ônibus ativo na última resposta. Última consulta às ${hhmm(ultimaConsultaGps)}; último sucesso ${idadeTexto(ultimaBoa.getTime())}.`
         : "Nenhum ônibus ativo indo para esse destino agora.");
       return;
@@ -580,7 +613,10 @@
     const situacao = dados.desatualizado
       ? `Última consulta às ${hhmm(ultimaConsultaGps)}; usando última consulta com sucesso ${idadeTexto(ultimaBoa.getTime())} (${Math.floor((dados.idadeSegundos || 0) / 60)} min atrás).`
       : `Última consulta às ${hhmm(ultimaConsultaGps)}; última consulta com sucesso às ${hhmm(ultimaBoa)}.`;
-    mostrar(`${dados.total} ônibus da linha ${linha}. ${situacao} Sinal ${idadeTexto(maisNovo)}.${refinamento}${aviso}`, Boolean(dados.desatualizado) || idadeMin >= 3);
+    const avisoTrajeto = dados.foraDoTrajeto
+      ? ` ${dados.foraDoTrajeto} posição(ões) muito distantes do trajeto foram ocultadas.`
+      : "";
+    mostrar(`${dados.total} ônibus da linha ${linha}. ${situacao} Sinal ${idadeTexto(maisNovo)}.${refinamento}${aviso}${avisoTrajeto}`, Boolean(dados.desatualizado) || idadeMin >= 3 || Boolean(dados.foraDoTrajeto));
     atualizarEstimativa();
   }
 
