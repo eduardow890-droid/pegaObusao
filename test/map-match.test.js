@@ -1,6 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ajustarAoTrajeto, projetarPonto, selecionarIndicesEspacados, dentroDaAreaAtendida } = require("../public/map-match");
+const {
+  ajustarAoTrajeto,
+  projetarPonto,
+  selecionarIndicesEspacados,
+  dentroDaAreaAtendida,
+  coordenadaEmProgresso,
+} = require("../public/map-match");
 
 const rota = [[-43.2, -22.9], [-43.19, -22.9]];
 
@@ -48,4 +54,11 @@ test("reconhece localizações dentro e fora da área atendida", () => {
   assert.equal(dentroDaAreaAtendida({ lat: -22.9, lng: -43.2 }), true);
   assert.equal(dentroDaAreaAtendida({ lat: -22.5, lng: -43.2 }), false);
   assert.equal(dentroDaAreaAtendida({ lat: NaN, lng: -43.2 }), false);
+});
+
+test("interpola coordenada percorrendo o shape da rota", () => {
+  const ponto = coordenadaEmProgresso(rota, projetarPonto(rota, { lng: -43.195, lat: -22.9 }).aoLongo);
+  assert.ok(ponto);
+  assert.ok(Math.abs(ponto[0] - -43.195) < 1e-8);
+  assert.equal(ponto[1], -22.9);
 });

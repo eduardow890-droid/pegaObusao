@@ -53,6 +53,22 @@
     return { ...melhor, comprimentoMetros: acumulada };
   }
 
+  function coordenadaEmProgresso(coordenadas, progressoMetros) {
+    if (!Array.isArray(coordenadas) || coordenadas.length === 0 || !Number.isFinite(progressoMetros)) return null;
+    let acumulada = 0;
+    for (let indice = 1; indice < coordenadas.length; indice += 1) {
+      const a = coordenadas[indice - 1];
+      const b = coordenadas[indice];
+      const trecho = distanciaMetros(a, b);
+      if (acumulada + trecho >= progressoMetros) {
+        const fator = trecho ? Math.max(0, Math.min(1, (progressoMetros - acumulada) / trecho)) : 0;
+        return [a[0] + (b[0] - a[0]) * fator, a[1] + (b[1] - a[1]) * fator];
+      }
+      acumulada += trecho;
+    }
+    return coordenadas.at(-1);
+  }
+
   function ajustarAoTrajeto(ponto, rotas, distanciaMaximaMetros = 300) {
     let melhor = null;
     for (const [indice, coordenadas] of rotas.entries()) {
@@ -94,6 +110,7 @@
     rumoGraus,
     diferencaAngulo,
     projetarPonto,
+    coordenadaEmProgresso,
     ajustarAoTrajeto,
     selecionarIndicesEspacados,
     dentroDaAreaAtendida,

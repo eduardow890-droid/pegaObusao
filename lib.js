@@ -90,6 +90,12 @@ function normalizarComMotivo(o, {
       tripId: String(o.trip_id ?? o.tripId ?? "").trim(),
       routeId: String(o.route_id ?? o.routeId ?? "").trim(),
       directionId: String(o.direction_id ?? o.directionId ?? "").trim(),
+      rumo: (() => {
+        const valor = o.rumo ?? o.bearing ?? o.course ?? o.heading;
+        if (valor == null || String(valor).trim() === "") return null;
+        const normalizado = num(valor);
+        return Number.isFinite(normalizado) && normalizado >= 0 && normalizado <= 360 ? normalizado : null;
+      })(),
       hora,
     },
     motivo: null,
@@ -275,5 +281,6 @@ module.exports = {
   buscarMinuto,
   carregarOnibus,
   metricasDescartesGPS,
+  contarDescarte,
   PADRAO,
 };

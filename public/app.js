@@ -16,7 +16,6 @@
     },
   });
   mapa.addControl(new maplibregl.NavigationControl(), "bottom-right");
-  const DISTANCIA_MAXIMA_AJUSTE_ROTA_METROS = 300;
 
   const ICONE_ONIBUS =
     '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="15" rx="3" fill="#14202E"/>' +
@@ -168,6 +167,23 @@
     marcador.__anim = requestAnimationFrame(passo);
   }
 
+  function moverPeloTrajeto(marcador, coordenadas, progressoDestino, ms = 900) {
+    const progressoInicial = Number.isFinite(marcador.__progressoMetros)
+      ? marcador.__progressoMetros
+      : progressoDestino;
+    cancelAnimationFrame(marcador.__anim);
+    const inicio = performance.now();
+    const passo = (agora) => {
+      const fator = Math.min(1, (agora - inicio) / ms);
+      const progresso = progressoInicial + (progressoDestino - progressoInicial) * fator;
+      const coordenada = PegaObusaoMapa.coordenadaEmProgresso(coordenadas, progresso);
+      if (coordenada) marcador.setLngLat(coordenada);
+      if (fator < 1) marcador.__anim = requestAnimationFrame(passo);
+      else marcador.__progressoMetros = progressoDestino;
+    };
+    marcador.__anim = requestAnimationFrame(passo);
+  }
+
   function limparParadas() {
     paradas.forEach((m) => m.remove());
     paradas = [];
@@ -300,51 +316,18 @@
       paradasLinha.push(marcador);
     });
     atualizarVisibilidadeParadasLinha();
-  }
-
-  function sentidoDoOnibus(onibus) {
-    if (!dadosLinhaAtual?.variantes?.length) return null;
-    const texto = `${onibus.destino || ""} ${onibus.sentido || ""}`.toUpperCase();
-    const porTrip = dadosLinhaAtual.variantes.findIndex((v) => v.tripIds?.includes(onibus.tripId));
-    if (porTrip >= 0) return porTrip;
-    const porDirecao = dadosLinhaAtual.variantes.findIndex((v) => v.sentido && v.sentido === onibus.directionId);
-    if (porDirecao >= 0) return porDirecao;
-    if (texto.trim()) {
-      const porTexto = dadosLinhaAtual.variantes.findIndex((v) => {
-        const alvo = `${v.destino || ""} ${v.sentido || ""}`.toUpperCase();
-        return alvo.trim() && (texto.includes(alvo) || alvo.includes(texto));
-      });
-      if (porTexto >= 0) return porTexto;
+    if (variante.rota?.coordinates?.length) {
+      const limites = new maplibregl.LngLatBounds();
+      variante.rota.coordinates.forEach((coordenada) => limites.extend(coordenada));
+      mapa.fitBounds(limites, { padding: margens(), maxZoom: 15 });
     }
-    let melhor = null;
-    dadosLinhaAtual.variantes.forEach((variante, indice) => {
-      const coordenadas = variante.rota?.coordinates || [];
-      if (!coordenadas.length) return;
-      const posicao = PegaObusaoMapa.projetarPonto(coordenadas, onibus);
-      if (posicao && (!melhor || posicao.distanciaMetros < melhor.distancia)) {
-        melhor = { indice, distancia: posicao.distanciaMetros };
-      }
-    });
-    return melhor && melhor.distancia <= 1500 ? melhor.indice : null;
   }
 
   function onibusDoSentido(onibus) {
-    return onibus.filter((item) => sentidoDoOnibus(item) === indiceSentido);
-  }
-
-  function ajustarOnibusAoTrajeto(onibus) {
-    const variantes = dadosLinhaAtual?.variantes || [];
-    if (!variantes.some((variante) => variante.rota?.coordinates?.length >= 2)) return onibus;
-    const indiceVariante = indiceSentido === null ? sentidoDoOnibus(onibus) : indiceSentido;
-    const coordenadas = variantes[indiceVariante]?.rota?.coordinates || [];
-    if (coordenadas.length < 2) return null;
-    const posicao = PegaObusaoMapa.ajustarAoTrajeto(
-      onibus,
-      [coordenadas],
-      DISTANCIA_MAXIMA_AJUSTE_ROTA_METROS,
-    );
-    if (!posicao) return null;
-    return { ...onibus, lat: posicao.lat, lng: posicao.lng };
+    return onibus.filter((item) => item.sentido === "indeterminado"
+      || (Number(item.sentido) === indiceSentido
+        && Number.isInteger(item.varianteIndice)
+        && ["rumo", "movimento"].includes(item.confiancaSentido)));
   }
 
   async function carregarDadosDaLinha(linha, seq) {
@@ -572,15 +555,11 @@
     ultimoDadosOnibus = dados;
     mostrarResultado(linha);
     atualizarResumoPainel();
-    const porSentido = indiceSentido === null ? dados.onibus : onibusDoSentido(dados.onibus);
-    const alinhados = porSentido.map(ajustarOnibusAoTrajeto).filter(Boolean);
-    const foraDoTrajeto = porSentido.length - alinhados.length;
-    dados = { ...dados, total: alinhados.length, foraDoTrajeto, onibus: alinhados };
+    const alinhados = indiceSentido === null ? dados.onibus : onibusDoSentido(dados.onibus);
+    dados = { ...dados, total: alinhados.length, onibus: alinhados };
     if (dados.total === 0) {
       limpar();
-      mostrar(foraDoTrajeto
-        ? `Posições de ônibus muito distantes do trajeto foram ocultadas (${foraDoTrajeto}). Aguardando GPS mais preciso.`
-        : dados.desatualizado
+      mostrar(dados.desatualizado
         ? `Nenhum ônibus ativo na última resposta. Última consulta às ${hhmm(ultimaConsultaGps)}; último sucesso ${idadeTexto(ultimaBoa.getTime())}.`
         : "Nenhum ônibus ativo indo para esse destino agora.");
       return;
@@ -598,22 +577,35 @@
       const ordem = String(o.ordem);
       let marcador = marcadoresPorOrdem.get(ordem);
       let el;
+      const coordenadaDestino = indiceSentido === null || o.sentido === "indeterminado"
+        || o.foraDaRota || !Array.isArray(o.posicaoNaRota)
+        ? [o.lng, o.lat]
+        : o.posicaoNaRota;
+      const sentidoDefinido = Number.isInteger(o.varianteIndice)
+        && ["rumo", "movimento"].includes(o.confiancaSentido);
       if (marcador) {
         el = marcador.getElement();
       } else {
         el = document.createElement("div");
-        marcador = new maplibregl.Marker({ element: el }).setLngLat([o.lng, o.lat]).addTo(mapa);
+        marcador = new maplibregl.Marker({ element: el }).setLngLat(coordenadaDestino).addTo(mapa);
         marcador.__ordem = ordem;
         marcadoresPorOrdem.set(ordem, marcador);
       }
       const velocidadeTexto = Number.isFinite(o.velocidade) ? `${Math.round(o.velocidade)} km/h` : "velocidade indisponível";
-      el.className = "onibus" + (o.velocidade === 0 ? " parado" : "") + (dados.desatualizado ? " antigo" : "");
+      el.className = "onibus" + (!sentidoDefinido || indiceSentido === null ? " indeterminado" : o.velocidade === 0 ? " parado" : "")
+        + (dados.desatualizado || o.foraDaRota ? " antigo" : "");
       const atualizado = o.hora ? hhmm(new Date(o.hora)) : "horário indisponível";
       const destino = o.destino || o.sentido || "Não informado pela API";
       el.title = `Ordem ${o.ordem} · ${velocidadeTexto} · ${atualizado}`;
       el.setAttribute("aria-label", `Ônibus ${o.ordem}, ${velocidadeTexto}, atualizado às ${atualizado}`);
       el.innerHTML = ICONE_ONIBUS;
-      moverSuave(marcador, [o.lng, o.lat]);
+      const coordenadasRota = dadosLinhaAtual?.variantes?.[o.varianteIndice]?.rota?.coordinates;
+      if (indiceSentido !== null && sentidoDefinido && !o.foraDaRota
+        && coordenadasRota?.length >= 2 && Number.isFinite(o.progressoMetros)) {
+        moverPeloTrajeto(marcador, coordenadasRota, o.progressoMetros);
+      } else {
+        moverSuave(marcador, [o.lng, o.lat]);
+      }
       const conteudo = document.createElement("div");
       [`Linha ${linha}`, `Ordem: ${o.ordem}`, `Destino/sentido: ${destino}`, `Velocidade: ${velocidadeTexto}`, `Atualização: ${idadeTexto(o.hora)}`].forEach((texto) => {
         const linhaPopup = document.createElement("div");
@@ -636,13 +628,12 @@
     const situacao = dados.desatualizado
       ? `Última consulta às ${hhmm(ultimaConsultaGps)}; usando última consulta com sucesso ${idadeTexto(ultimaBoa.getTime())} (${Math.floor((dados.idadeSegundos || 0) / 60)} min atrás).`
       : `Última consulta às ${hhmm(ultimaConsultaGps)}; última consulta com sucesso às ${hhmm(ultimaBoa)}.`;
-    const avisoTrajeto = dados.foraDoTrajeto
-      ? ` ${dados.foraDoTrajeto} posição(ões) muito distantes do trajeto foram ocultadas.`
-      : "";
+    const indeterminados = dados.onibus.filter((onibus) => onibus.sentido === "indeterminado").length;
+    const avisoSentido = indeterminados ? ` ${indeterminados} ônibus sem sentido confirmado aparecem em cinza.` : "";
     mostrar(
-      `${dados.total} ônibus da linha ${linha}. ${situacao} Sinal ${idadeTexto(maisNovo)}.${refinamento}${aviso}${avisoTrajeto}`,
+      `${dados.total} ônibus da linha ${linha}. ${situacao} Sinal ${idadeTexto(maisNovo)}.${refinamento}${aviso}${avisoSentido}`,
       false,
-      Boolean(dados.desatualizado) || idadeMin >= 3 || Boolean(dados.foraDoTrajeto),
+      Boolean(dados.desatualizado) || idadeMin >= 3 || Boolean(indeterminados),
     );
     atualizarEstimativa();
   }

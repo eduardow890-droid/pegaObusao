@@ -3,11 +3,24 @@
 const fs = require("fs");
 const path = require("path");
 const { estimarChegada, projetarPonto, distanciaMetros: distanciaMetrosRota, rumoGraus, diferencaAngulo } = require("./chegada");
+const { contarDescarte } = require("./lib");
 
 let banco;
 const historicoChegada = new Map();
+const historicoProgressoRota = new Map();
+const historicoProgressoVariantes = new Map();
 const alvosChegada = new Map();
 const ultimasEstimativas = new Map();
+const DISTANCIA_GRUDAR_METROS = 60;
+const DISTANCIA_MAXIMA_ROTA_METROS = 500;
+const MOVIMENTO_MINIMO_SENTIDO_METROS = 30;
+const metricasAssociacao = {
+  recebidos: 0,
+  descartadosPorDistancia: 0,
+  comSentidoPorRumo: 0,
+  comSentidoPorMovimento: 0,
+  indeterminados: 0,
+};
 
 function carregar() {
   if (banco) return banco;
@@ -51,24 +64,166 @@ function buscarLinha(linha) {
 }
 
 function varianteDoOnibus(dadosLinha, bus) {
-  const texto = `${bus.destino || ""} ${bus.sentido || ""}`.trim().toUpperCase();
   const porTrip = dadosLinha.variantes.findIndex((variante) => variante.tripIds?.includes(bus.tripId));
+  if (bus.directionId !== "" && bus.directionId != null) {
+    const porDirecao = dadosLinha.variantes.findIndex((variante) => String(variante.sentido) === String(bus.directionId));
+    if (porDirecao >= 0) return porTrip >= 0 && porTrip !== porDirecao ? -1 : porDirecao;
+  }
   if (porTrip >= 0) return porTrip;
-  const porTexto = dadosLinha.variantes.findIndex((variante) => {
-    const alvo = `${variante.destino || ""} ${variante.sentido || ""}`.trim().toUpperCase();
-    return alvo && texto && (alvo.includes(texto) || texto.includes(alvo));
-  });
-  if (porTexto >= 0) return porTexto;
+  const rumo = normalizarRumo(bus.rumo);
+  if (rumo === null) return -1;
   let melhor = null;
   dadosLinha.variantes.forEach((variante, indice) => {
     const posicao = projetarPonto(variante.rota?.coordinates || [], bus);
-    if (!posicao || !melhor || posicao.distanciaMetros < melhor.distancia) melhor = { indice, distancia: posicao?.distanciaMetros ?? Infinity };
+    if (!posicao || diferencaAngulo(rumo, posicao.rumoTrecho) >= 90) return;
+    if (!melhor || posicao.distanciaMetros < melhor.distancia) {
+      melhor = { indice, distancia: posicao.distanciaMetros };
+    }
   });
-  return melhor?.distancia <= 1500 ? melhor.indice : null;
+  return melhor ? melhor.indice : -1;
+}
+
+function normalizarRumo(valor) {
+  if (valor == null || (typeof valor === "string" && valor.trim() === "")) return null;
+  if (typeof valor !== "number" && typeof valor !== "string") return null;
+  if (typeof valor === "string" && !/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(valor.trim())) return null;
+  const rumo = Number(valor);
+  return Number.isFinite(rumo) && rumo >= 0 && rumo <= 360 ? rumo : null;
+}
+
+function metricasAssociacaoSentido() {
+  return { ...metricasAssociacao };
 }
 
 function filtrarOnibusSentido(dadosLinha, indice, onibus) {
-  return (onibus || []).filter((bus) => varianteDoOnibus(dadosLinha, bus) === indice);
+  return (onibus || []).filter((bus) =>
+    Number(bus.sentido) === indice
+    && Number.isInteger(bus.varianteIndice)
+    && ["rumo", "movimento"].includes(bus.confiancaSentido));
+}
+
+function projetarEmVariantes(dadosLinha, bus) {
+  return dadosLinha.variantes.map((variante, indice) => {
+    const coordenadas = variante.rota?.coordinates || [];
+    const posicao = coordenadas.length >= 2 ? projetarPonto(coordenadas, bus) : null;
+    return posicao ? { indice, coordenadas, posicao } : null;
+  }).filter(Boolean);
+}
+
+function variantePorMovimento(projecoes, leituraAnterior, hora) {
+  if (!leituraAnterior || !Number.isFinite(hora) || hora <= leituraAnterior.hora) return null;
+  const candidatas = projecoes.map((projecao) => {
+    const progressoAnterior = leituraAnterior.progressoPorVariante[projecao.indice];
+    return {
+      ...projecao,
+      movimento: progressoAnterior == null ? 0 : projecao.posicao.aoLongo - progressoAnterior,
+    };
+  }).filter((projecao) => projecao.movimento >= MOVIMENTO_MINIMO_SENTIDO_METROS);
+  candidatas.sort((a, b) => a.posicao.distanciaMetros - b.posicao.distanciaMetros
+    || b.movimento - a.movimento
+    || a.indice - b.indice);
+  return candidatas[0] || null;
+}
+
+function coordenadaEmProgresso(coordenadas, progressoMetros) {
+  let acumulada = 0;
+  for (let indice = 1; indice < coordenadas.length; indice += 1) {
+    const a = coordenadas[indice - 1];
+    const b = coordenadas[indice];
+    const trecho = distanciaMetrosRota(a, b);
+    if (acumulada + trecho >= progressoMetros) {
+      const fator = trecho ? Math.max(0, Math.min(1, (progressoMetros - acumulada) / trecho)) : 0;
+      return [a[0] + (b[0] - a[0]) * fator, a[1] + (b[1] - a[1]) * fator];
+    }
+    acumulada += trecho;
+  }
+  return coordenadas.at(-1);
+}
+
+function projetarOnibusNaRota(dadosLinha, onibus) {
+  const resultado = [];
+  for (const registro of onibus || []) {
+    metricasAssociacao.recebidos += 1;
+    const chaveVeiculo = `${dadosLinha.linha}:${registro.ordem}`;
+    const projecoes = projetarEmVariantes(dadosLinha, registro);
+    const maisProxima = projecoes.reduce((melhor, item) =>
+      !melhor || item.posicao.distanciaMetros < melhor.posicao.distanciaMetros ? item : melhor, null);
+    if (!maisProxima || maisProxima.posicao.distanciaMetros > DISTANCIA_MAXIMA_ROTA_METROS) {
+      contarDescarte("fora_da_rota");
+      metricasAssociacao.descartadosPorDistancia += 1;
+      continue;
+    }
+
+    const rumo = normalizarRumo(registro.rumo);
+    let escolhida = null;
+    let confiancaSentido = "nenhuma";
+    if (rumo !== null) {
+      escolhida = varianteDoOnibus(dadosLinha, { ...registro, rumo });
+      if (escolhida >= 0) {
+        escolhida = projecoes.find((item) => item.indice === escolhida) || null;
+        confiancaSentido = escolhida ? "rumo" : "nenhuma";
+      }
+    } else {
+      const porMetadado = varianteDoOnibus(dadosLinha, registro);
+      if (porMetadado >= 0 && (registro.directionId || registro.tripId)) {
+        escolhida = projecoes.find((item) => item.indice === porMetadado) || null;
+        confiancaSentido = escolhida ? "rumo" : "nenhuma";
+      }
+      if (!escolhida) {
+        const anterior = historicoProgressoVariantes.get(chaveVeiculo);
+        escolhida = variantePorMovimento(projecoes, anterior, Number(registro.hora));
+        if (escolhida) confiancaSentido = "movimento";
+      }
+    }
+
+    const hora = Number(registro.hora);
+    const leituraAnterior = historicoProgressoVariantes.get(chaveVeiculo);
+    if (Number.isFinite(hora) && (!leituraAnterior || hora > leituraAnterior.hora)) {
+      historicoProgressoVariantes.set(chaveVeiculo, {
+        hora,
+        progressoPorVariante: Object.fromEntries(projecoes.map(({ indice, posicao }) => [indice, posicao.aoLongo])),
+      });
+    }
+
+    if (!escolhida || escolhida.posicao.distanciaMetros > DISTANCIA_MAXIMA_ROTA_METROS) {
+      metricasAssociacao.indeterminados += 1;
+      resultado.push({ ...registro, sentido: "indeterminado", confiancaSentido: "nenhuma" });
+      continue;
+    }
+    const { indice: varianteIndice, coordenadas, posicao } = escolhida;
+
+    const chave = `${dadosLinha.linha}:${varianteIndice}:${registro.ordem}`;
+    const anterior = historicoProgressoRota.get(chave);
+    const progressoAnteriorMetros = anterior?.progressoMetros ?? null;
+    const progressoMetros = anterior && posicao.aoLongo < anterior.progressoMetros - 30
+      ? anterior.progressoMetros
+      : posicao.aoLongo;
+    const posicaoNaRota = coordenadaEmProgresso(coordenadas, progressoMetros);
+    const desvioMetros = Math.round(posicao.distanciaMetros);
+    const foraDaRota = posicao.distanciaMetros > DISTANCIA_GRUDAR_METROS;
+    historicoProgressoRota.set(chave, { progressoMetros });
+    metricasAssociacao[confiancaSentido === "movimento" ? "comSentidoPorMovimento" : "comSentidoPorRumo"] += 1;
+    resultado.push({
+      ...registro,
+      lat: foraDaRota ? registro.lat : posicaoNaRota[1],
+      lng: foraDaRota ? registro.lng : posicaoNaRota[0],
+      sentido: String(varianteIndice),
+      confiancaSentido,
+      varianteIndice,
+      posicaoNaRota,
+      progressoMetros,
+      progressoAnteriorMetros,
+      desvioMetros,
+      foraDaRota,
+    });
+  }
+  while (historicoProgressoRota.size > 10_000) {
+    historicoProgressoRota.delete(historicoProgressoRota.keys().next().value);
+  }
+  while (historicoProgressoVariantes.size > 10_000) {
+    historicoProgressoVariantes.delete(historicoProgressoVariantes.keys().next().value);
+  }
+  return resultado;
 }
 
 function distanciaMetros(a, b) {
@@ -175,4 +330,17 @@ function chegada(dadosLinha, indice, onibus, localizacao, agora = Date.now()) {
   return resultado;
 }
 
-module.exports = { buscarLinha, statusGtfs, previsao, chegada, buscarParadasLocais, distanciaMetros, varianteDoOnibus, filtrarOnibusSentido };
+module.exports = {
+  buscarLinha,
+  statusGtfs,
+  previsao,
+  chegada,
+  buscarParadasLocais,
+  distanciaMetros,
+  varianteDoOnibus,
+  filtrarOnibusSentido,
+  projetarOnibusNaRota,
+  metricasAssociacaoSentido,
+  normalizarRumo,
+  coordenadaEmProgresso,
+};

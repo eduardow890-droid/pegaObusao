@@ -15,14 +15,54 @@ async function comServidor(opcoes, executar) {
 
 test("endpoint retorna o contrato esperado para o front-end", async () => {
   const onibus = [{ ordem: "A1", linha: "485", lat: -22.9, lng: -43.2, velocidade: 10, hora: 1 }];
-  await comServidor({ buscarOnibus: async () => onibus }, async (base) => {
+  await comServidor({
+    buscarOnibus: async () => onibus,
+    buscarLinhaGtfs: () => ({
+      linha: "485",
+      variantes: [{ sentido: "0", tripIds: [], rota: { coordinates: [[-43.21, -22.9], [-43.19, -22.9]] }, paradas: [] }],
+    }),
+  }, async (base) => {
     const resposta = await fetch(`${base}/api/onibus?linha=485`);
     const dados = await resposta.json();
     assert.equal(resposta.status, 200);
     assert.equal(dados.linha, "485");
     assert.equal(dados.total, 1);
     assert.ok(Number.isFinite(Date.parse(dados.atualizadoEm)));
-    assert.deepEqual(dados.onibus, onibus);
+    assert.equal(dados.onibus[0].ordem, "A1");
+    assert.equal(dados.onibus[0].sentido, "indeterminado");
+    assert.equal(dados.onibus[0].confiancaSentido, "nenhuma");
+    assert.equal("desvioMetros" in dados.onibus[0], false);
+  });
+});
+
+test("endpoint de ônibus devolve posição projetada e metadados da rota", async () => {
+  const shape = [[-43.3, -22.9], [-43.1, -22.9]];
+  await comServidor({
+    buscarOnibus: async () => [{
+      ordem: "ON-ROTA",
+      linha: "485",
+      lat: -22.90018,
+      lng: -43.25,
+      velocidade: 20,
+      directionId: "0",
+      hora: Date.now(),
+    }],
+    buscarLinhaGtfs: () => ({
+      linha: "485",
+      variantes: [{ sentido: "0", tripIds: [], rota: { coordinates: shape }, paradas: [] }],
+    }),
+  }, async (base) => {
+    const resposta = await fetch(`${base}/api/onibus?linha=485`);
+    const dados = await resposta.json();
+    assert.equal(resposta.status, 200);
+    assert.equal(dados.onibus.length, 1);
+    assert.deepEqual(dados.onibus[0].posicaoNaRota, [-43.25, -22.9]);
+    assert.equal(dados.onibus[0].foraDaRota, false);
+    assert.equal(dados.onibus[0].varianteIndice, 0);
+    assert.equal(dados.onibus[0].sentido, "0");
+    assert.equal(dados.onibus[0].confiancaSentido, "rumo");
+    assert.ok(Number.isFinite(dados.onibus[0].progressoMetros));
+    assert.ok(dados.onibus[0].desvioMetros >= 19 && dados.onibus[0].desvioMetros <= 21);
   });
 });
 
@@ -103,6 +143,13 @@ test("healthcheck e métricas retornam estado operacional", async () => {
     assert.ok(dadosMetrics.requisicoes >= 2);
     assert.equal(typeof dadosMetrics.cacheLinhas, "number");
     assert.equal(typeof dadosMetrics.gps.descartes, "object");
+    assert.deepEqual(Object.keys(dadosMetrics.gps.associacaoSentido), [
+      "recebidos",
+      "descartadosPorDistancia",
+      "comSentidoPorRumo",
+      "comSentidoPorMovimento",
+      "indeterminados",
+    ]);
   });
 });
 

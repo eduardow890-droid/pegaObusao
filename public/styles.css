@@ -704,6 +704,10 @@ input::placeholder {
   background: var(--pedra);
 }
 
+.onibus.indeterminado {
+  background: var(--pedra);
+}
+
 .onibus.antigo {
   border-style: dashed;
   opacity: .45;

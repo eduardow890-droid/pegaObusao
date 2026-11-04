@@ -7,7 +7,7 @@ const path = require("path");
 const os = require("os");
 const { carregarOnibus, metricasDescartesGPS } = require("./lib");
 const { buscarEnderecos, buscarParadas, calcularRota, validarContatoNominatim } = require("./servicos");
-const { buscarLinha, statusGtfs, previsao, chegada, buscarParadasLocais } = require("./gtfs");
+const { buscarLinha, statusGtfs, previsao, chegada, buscarParadasLocais, projetarOnibusNaRota, metricasAssociacaoSentido } = require("./gtfs");
 const { atender: atenderGtfs } = require("./rotas/gtfs");
 const { atender: atenderServicos } = require("./rotas/servicos");
 
@@ -121,8 +121,13 @@ function criarServidor({
     if (guardado) cache.delete(linha);
     if (pendentes.has(linha)) return pendentes.get(linha);
 
-    const consulta = Promise.resolve().then(() => buscarOnibus(linha)).then((onibus) => {
+    const consulta = Promise.resolve().then(() => buscarOnibus(linha)).then((onibusBrutos) => {
       const instante = agora();
+      const dadosLinha = statusGtfs().disponivel ? buscarLinhaGtfs(linha) : null;
+      let onibus = onibusBrutos;
+      if (dadosLinha?.variantes?.some((variante) => variante.rota?.coordinates?.length >= 2)) {
+        onibus = projetarOnibusNaRota(dadosLinha, onibusBrutos);
+      }
       for (const [chave, valor] of cache) {
         if (instante - valor.em >= cacheMs) cache.delete(chave);
       }
@@ -170,6 +175,7 @@ function criarServidor({
           ultimoSucesso: gpsUltimoSucesso,
           ultimoErro: gpsUltimoErro,
           descartes: metricasDescartesGPS(),
+          associacaoSentido: metricasAssociacaoSentido(),
         },
       });
     }
