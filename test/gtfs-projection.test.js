@@ -110,6 +110,30 @@ test("ônibus parado permanece indeterminado", () => {
   assert.equal("desvioMetros" in parado, false);
 });
 
+test("janela de três minutos infere sentido mesmo com as duas leituras recentes iguais", () => {
+  const linha = linhaTeste("PROJ-JANELA-MOVIMENTO");
+  const primeira = onibus("V-JANELA", -43.25, -22.9, { directionId: "", hora: 1000, velocidade: 10 });
+  const segunda = onibus("V-JANELA", -43.2495, -22.9, { directionId: "", hora: 61_000, velocidade: 10 });
+  const terceira = onibus("V-JANELA", -43.2495, -22.9, { directionId: "", hora: 121_000, velocidade: 10 });
+  projetarOnibusNaRota(linha, [primeira]);
+  projetarOnibusNaRota(linha, [segunda]);
+  const [inferido] = projetarOnibusNaRota(linha, [terceira]);
+  assert.equal(inferido.sentido, "0");
+  assert.equal(inferido.confiancaSentido, "movimento");
+});
+
+test("ônibus com velocidade zero durante toda a janela de três minutos fica indeterminado", () => {
+  const linha = linhaTeste("PROJ-JANELA-PARADO");
+  const primeira = onibus("V-JANELA-PARADO", -43.25, -22.9, { directionId: "", hora: 1000, velocidade: 0 });
+  const segunda = onibus("V-JANELA-PARADO", -43.25, -22.9, { directionId: "", hora: 91_000, velocidade: 0 });
+  const terceira = onibus("V-JANELA-PARADO", -43.25, -22.9, { directionId: "", hora: 181_000, velocidade: 0 });
+  projetarOnibusNaRota(linha, [primeira]);
+  projetarOnibusNaRota(linha, [segunda]);
+  const [parado] = projetarOnibusNaRota(linha, [terceira]);
+  assert.equal(parado.sentido, "indeterminado");
+  assert.equal(parado.confiancaSentido, "nenhuma");
+});
+
 test("previsão filtra sentido oposto e veículos indeterminados", () => {
   const dados = [
     { sentido: "0", varianteIndice: 0, confiancaSentido: "movimento" },

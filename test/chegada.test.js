@@ -78,9 +78,26 @@ test("velocidade desconhecida também não gera previsão numérica", () => {
 });
 
 test("sem ônibus retorna motivo honesto", () => {
-  const dados = estimarChegada({ rota, paradas: [parada], onibus: [], agora, localizacao: { lat: -22.2, lng: -43.2 } });
+  const primeira = { id: "P0", nome: "Terminal inicial", lat: -22.9, lng: -43.2 };
+  const dados = estimarChegada({
+    rota, paradas: [primeira, parada], onibus: [], agora,
+    localizacao: { lat: parada.lat, lng: parada.lng },
+  });
   assert.equal(dados.disponivel, false);
+  assert.equal(dados.paradaInicial, false);
+  assert.equal(dados.parada.id, parada.id);
   assert.match(dados.motivo, /Não há ônibus/);
+});
+
+test("parada inicial informa que os ônibus saem dali", () => {
+  const primeira = { id: "P0", nome: "Terminal inicial", lat: -22.9, lng: -43.2 };
+  const dados = estimarChegada({
+    rota, paradas: [primeira, parada], onibus: [], agora,
+    localizacao: { lat: primeira.lat, lng: primeira.lng },
+  });
+  assert.equal(dados.disponivel, false);
+  assert.equal(dados.paradaInicial, true);
+  assert.match(dados.motivo, /parada inicial: os ônibus saem daqui/);
 });
 
 test("mantém apenas o ônibus-alvo quando ele continua disponível", () => {

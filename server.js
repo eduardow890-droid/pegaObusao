@@ -89,11 +89,19 @@ function criarServidor({
   const ultimasRespostasGps = new Map(); // linha -> último conjunto obtido com sucesso
   const pendentes = new Map(); // evita chamadas duplicadas simultâneas pela mesma linha
   const limites = new Map(); // IP -> { inicio, quantidade }
+  const metricasVazias = {
+    recebidos: 0,
+    descartadosPorDistancia: 0,
+    comSentidoPorRumo: 0,
+    comSentidoPorMovimento: 0,
+    indeterminados: 0,
+  };
   let requisicoes = 0;
   let erros = 0;
   let gpsUltimaConsulta = null;
   let gpsUltimoSucesso = null;
   let gpsUltimoErro = null;
+  let associacaoSentidoUltimaConsulta = { ...metricasVazias };
 
   function permitido(ip) {
     const instante = agora();
@@ -125,13 +133,20 @@ function criarServidor({
       const instante = agora();
       const dadosLinha = statusGtfs().disponivel ? buscarLinhaGtfs(linha) : null;
       let onibus = onibusBrutos;
+      let metricasConsulta = { ...metricasVazias };
       if (dadosLinha?.variantes?.some((variante) => variante.rota?.coordinates?.length >= 2)) {
+        const antes = metricasAssociacaoSentido();
         onibus = projetarOnibusNaRota(dadosLinha, onibusBrutos);
+        const depois = metricasAssociacaoSentido();
+        metricasConsulta = Object.fromEntries(
+          Object.keys(metricasVazias).map((chave) => [chave, depois[chave] - antes[chave]]),
+        );
       }
+      associacaoSentidoUltimaConsulta = metricasConsulta;
       for (const [chave, valor] of cache) {
         if (instante - valor.em >= cacheMs) cache.delete(chave);
       }
-      const novo = { em: instante, onibus };
+      const novo = { em: instante, onibus, metricasAssociacaoSentido: metricasConsulta };
       const sucesso = { em: instante, obtidoEm: new Date(instante).toISOString(), onibus };
       ultimasRespostasGps.set(linha, sucesso);
       cache.set(linha, novo);
@@ -175,7 +190,10 @@ function criarServidor({
           ultimoSucesso: gpsUltimoSucesso,
           ultimoErro: gpsUltimoErro,
           descartes: metricasDescartesGPS(),
-          associacaoSentido: metricasAssociacaoSentido(),
+          associacaoSentido: {
+            acumulados: metricasAssociacaoSentido(),
+            ultimaConsulta: { ...associacaoSentidoUltimaConsulta },
+          },
         },
       });
     }

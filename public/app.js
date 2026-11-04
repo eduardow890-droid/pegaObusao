@@ -15,7 +15,7 @@
       layers: [{ id: "osm", type: "raster", source: "osm" }],
     },
   });
-  mapa.addControl(new maplibregl.NavigationControl(), "bottom-right");
+  mapa.addControl(new maplibregl.NavigationControl(), "top-right");
 
   const ICONE_ONIBUS =
     '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="15" rx="3" fill="#14202E"/>' +
@@ -66,6 +66,7 @@
   let localizacaoMarker = null;
   let dadosLinhaAtual = null;
   let indiceSentido = null;
+  let variantesPorSentido = new Map();
   let ultimoDadosOnibus = null;
   let localizacao = null;
   let pontoEndereco = null;
@@ -91,7 +92,9 @@
     }
     setTimeout(() => {
       mapa.resize();
-      if (marcadores.length > 1) {
+      if (indiceSentido !== null && dadosLinhaAtual) {
+        enquadrarRota(indiceSentido, 0);
+      } else if (marcadores.length > 1) {
         const limites = new maplibregl.LngLatBounds();
         marcadores.forEach((marcador) => limites.extend(marcador.getLngLat()));
         mapa.fitBounds(limites, { padding: margens(), maxZoom: 15, duration: 0 });
@@ -324,8 +327,9 @@
   }
 
   function onibusDoSentido(onibus) {
+    const variantes = variantesPorSentido.get(indiceSentido) || [indiceSentido];
     return onibus.filter((item) => item.sentido === "indeterminado"
-      || (Number(item.sentido) === indiceSentido
+      || (variantes.includes(Number(item.varianteIndice))
         && Number.isInteger(item.varianteIndice)
         && ["rumo", "movimento"].includes(item.confiancaSentido)));
   }
@@ -334,6 +338,7 @@
     limparRotaLinha();
     dadosLinhaAtual = null;
     indiceSentido = null;
+    variantesPorSentido = new Map();
     sentidoSelect.replaceChildren(new Option("Escolha um destino", ""));
     sentidoOpcoesEl.replaceChildren();
     sentidoSelect.disabled = true;
@@ -342,8 +347,24 @@
       const dados = await jsonApi(`/api/linha?linha=${encodeURIComponent(linha)}`);
       if (seq !== sequencia) return;
       dadosLinhaAtual = dados;
+      const grupos = new Map();
       dados.variantes.forEach((variante, indice) => {
         const destino = variante.destino || `Sentido ${variante.sentido || indice + 1}`;
+        const chave = `${variante.sentido || destino.toLocaleLowerCase("pt-BR")}::${destino.toLocaleLowerCase("pt-BR")}`;
+        const grupo = grupos.get(chave) || { destino, indices: [], representante: indice };
+        grupo.indices.push(indice);
+        const atual = dados.variantes[grupo.representante];
+        if (variante.paradas.length > atual.paradas.length
+          || (variante.paradas.length === atual.paradas.length
+            && (variante.rota?.coordinates?.length || 0) > (atual.rota?.coordinates?.length || 0))) {
+          grupo.representante = indice;
+        }
+        grupos.set(chave, grupo);
+      });
+      grupos.forEach((grupo) => {
+        const indice = grupo.representante;
+        const destino = grupo.destino;
+        variantesPorSentido.set(indice, grupo.indices);
         sentidoSelect.append(new Option(destino, String(indice)));
         const botao = document.createElement("button");
         botao.type = "button";
@@ -431,8 +452,10 @@
       estimativaAtual = dados;
       if (!dados.disponivel) {
         resultadoCardEl.className = "resultado-cartao instrucao";
-        estimativaEl.textContent = "Nenhum ônibus a caminho";
-        resultadoParadaEl.textContent = dados.parada ? `Parada mais próxima: ${dados.parada.nome}` : "Nenhuma parada encontrada nesse sentido.";
+        estimativaEl.textContent = dados.paradaInicial ? "Parada inicial" : "Sem previsão";
+        resultadoParadaEl.textContent = dados.paradaInicial
+          ? "Esta é a parada inicial: os ônibus saem daqui."
+          : dados.parada ? `Parada mais próxima: ${dados.parada.nome}` : "Nenhuma parada encontrada nesse sentido.";
         resultadoDetalheEl.textContent = dados.motivo || "Importe os dados oficiais (GTFS) para ver a estimativa de chegada.";
         aplicarDestaque([]);
         return;
@@ -544,9 +567,32 @@
 
   // Margens do enquadramento: deixa o painel e a marca livres
   function margens() {
+    const painelVisivel = estadoPainel() === "oculto" ? 0 : painelEl.getBoundingClientRect().height;
+    const marcaInferior = document.querySelector(".marca").getBoundingClientRect().bottom;
+    const controles = document.querySelector(".maplibregl-ctrl-top-right");
+    const margemControles = Math.ceil((controles?.getBoundingClientRect().width || 44) + 16);
     return innerWidth >= 700
-      ? (estadoPainel() === "oculto" ? { top: 60, bottom: 60, left: 80, right: 60 } : { top: 60, bottom: 60, left: 420, right: 60 })
-      : { top: 90, bottom: estadoPainel() === "aberto" ? Math.round(innerHeight * .42) + 20 : 85, left: 40, right: 40 };
+      ? {
+        top: Math.max(60, Math.ceil(marcaInferior + 12)),
+        bottom: 60,
+        left: estadoPainel() === "oculto" ? 80 : 420,
+        right: margemControles,
+      }
+      : {
+        top: Math.max(76, Math.ceil(marcaInferior + 12)),
+        bottom: Math.ceil(painelVisivel + 16),
+        left: 32,
+        right: margemControles,
+      };
+  }
+
+  function enquadrarRota(indice, duration = 0) {
+    const coordenadas = dadosLinhaAtual?.variantes?.[indice]?.rota?.coordinates;
+    if (!coordenadas?.length) return false;
+    const limites = new maplibregl.LngLatBounds();
+    coordenadas.forEach((coordenada) => limites.extend(coordenada));
+    mapa.fitBounds(limites, { padding: margens(), maxZoom: 15, duration });
+    return true;
   }
 
   function desenhar(dados, linha) {
@@ -726,6 +772,7 @@
       else mapa.once("load", () => adicionarRotaDaLinha(dadosLinhaAtual, indiceSentido));
     }
     if (ultimoDadosOnibus && linhaAtual) desenhar(ultimoDadosOnibus, linhaAtual);
+    if (indiceSentido !== null && dadosLinhaAtual && mapa.isStyleLoaded()) enquadrarRota(indiceSentido);
     atualizarEstimativa();
   });
   alternarPainelBtn.addEventListener("click", () => {

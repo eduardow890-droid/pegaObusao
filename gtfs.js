@@ -14,6 +14,8 @@ const ultimasEstimativas = new Map();
 const DISTANCIA_GRUDAR_METROS = 60;
 const DISTANCIA_MAXIMA_ROTA_METROS = 500;
 const MOVIMENTO_MINIMO_SENTIDO_METROS = 30;
+const JANELA_SENTIDO_MS = 180_000;
+const VELOCIDADE_PARADO_KMH = 1;
 const metricasAssociacao = {
   recebidos: 0,
   descartadosPorDistancia: 0,
@@ -110,10 +112,16 @@ function projetarEmVariantes(dadosLinha, bus) {
   }).filter(Boolean);
 }
 
-function variantePorMovimento(projecoes, leituraAnterior, hora) {
-  if (!leituraAnterior || !Number.isFinite(hora) || hora <= leituraAnterior.hora) return null;
+function variantePorMovimento(projecoes, historico, leituraAtual) {
+  if (!historico.length) return null;
+  const baseline = historico[0];
+  if (leituraAtual.hora <= baseline.hora) return null;
+  const janela = [...historico, leituraAtual];
+  const paradoNaJanela = janela.length > 1 && janela.every((leitura) =>
+    Number.isFinite(leitura.velocidade) && leitura.velocidade <= VELOCIDADE_PARADO_KMH);
+  if (paradoNaJanela) return null;
   const candidatas = projecoes.map((projecao) => {
-    const progressoAnterior = leituraAnterior.progressoPorVariante[projecao.indice];
+    const progressoAnterior = baseline.progressoPorVariante[projecao.indice];
     return {
       ...projecao,
       movimento: progressoAnterior == null ? 0 : projecao.posicao.aoLongo - progressoAnterior,
@@ -170,19 +178,34 @@ function projetarOnibusNaRota(dadosLinha, onibus) {
         confiancaSentido = escolhida ? "rumo" : "nenhuma";
       }
       if (!escolhida) {
-        const anterior = historicoProgressoVariantes.get(chaveVeiculo);
-        escolhida = variantePorMovimento(projecoes, anterior, Number(registro.hora));
+        const hora = Number(registro.hora);
+        const velocidade = Number.isFinite(registro.velocidade) ? registro.velocidade : null;
+        const historico = (historicoProgressoVariantes.get(chaveVeiculo) || [])
+          .filter((leitura) => hora - leitura.hora <= JANELA_SENTIDO_MS && hora >= leitura.hora);
+        escolhida = variantePorMovimento(projecoes, historico, {
+          hora,
+          velocidade,
+          progressoPorVariante: Object.fromEntries(projecoes.map(({ indice, posicao }) => [indice, posicao.aoLongo])),
+        });
         if (escolhida) confiancaSentido = "movimento";
       }
     }
 
     const hora = Number(registro.hora);
-    const leituraAnterior = historicoProgressoVariantes.get(chaveVeiculo);
-    if (Number.isFinite(hora) && (!leituraAnterior || hora > leituraAnterior.hora)) {
-      historicoProgressoVariantes.set(chaveVeiculo, {
-        hora,
-        progressoPorVariante: Object.fromEntries(projecoes.map(({ indice, posicao }) => [indice, posicao.aoLongo])),
-      });
+    const leituraAtual = {
+      hora,
+      velocidade: Number.isFinite(registro.velocidade) ? registro.velocidade : null,
+      progressoPorVariante: Object.fromEntries(projecoes.map(({ indice, posicao }) => [indice, posicao.aoLongo])),
+    };
+    const historico = (historicoProgressoVariantes.get(chaveVeiculo) || [])
+      .filter((leitura) => Number.isFinite(hora) && hora - leitura.hora <= JANELA_SENTIDO_MS && hora >= leitura.hora);
+    if (Number.isFinite(hora) && (!historico.length || hora > historico.at(-1).hora)) {
+      historico.push(leituraAtual);
+      historicoProgressoVariantes.set(chaveVeiculo, historico);
+    } else if (historico.length) {
+      historicoProgressoVariantes.set(chaveVeiculo, historico);
+    } else {
+      historicoProgressoVariantes.delete(chaveVeiculo);
     }
 
     if (!escolhida || escolhida.posicao.distanciaMetros > DISTANCIA_MAXIMA_ROTA_METROS) {

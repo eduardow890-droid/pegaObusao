@@ -566,17 +566,22 @@ input::placeholder {
 }
 
 .sentido-opcoes {
-  display: flex;
-  gap: 7px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
 }
 
 .sentido-opcoes button {
   min-height: 52px;
-  flex: 1;
+  min-width: 0;
+  width: 100%;
   padding: 8px 10px;
   border: var(--borda);
   background: var(--branco);
   color: var(--noite);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .sentido-opcoes button.ativo {
@@ -751,6 +756,11 @@ input::placeholder {
   bottom: 0;
 }
 
+.maplibregl-ctrl-top-right {
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  right: 8px;
+}
+
 .maplibregl-ctrl-group,
 .maplibregl-popup-content,
 .maplibregl-popup-tip {
@@ -806,7 +816,12 @@ input::placeholder {
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    scroll-padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    padding: 10px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .resultado-cartao {
+    scroll-margin-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
 
   .painel::before {
@@ -862,19 +877,6 @@ input::placeholder {
 
   .rodape {
     margin-top: 7px;
-  }
-
-  .maplibregl-ctrl-bottom-right {
-    right: 8px;
-    bottom: calc(42vh + 8px);
-  }
-
-  body.painel-compacto .maplibregl-ctrl-bottom-right {
-    bottom: 248px;
-  }
-
-  body.painel-oculto .maplibregl-ctrl-bottom-right {
-    bottom: 8px;
   }
 
   .campo {

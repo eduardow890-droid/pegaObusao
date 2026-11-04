@@ -43,12 +43,18 @@ function estimarChegada({ rota, paradas, onibus, localizacao, agora = Date.now()
   if (coordenadas.length < 2 || !Array.isArray(paradas) || !localizacao) {
     return { disponivel: false, motivo: "Dados oficiais de trajeto ou localização insuficientes." };
   }
-  const paradaMaisProxima = paradas.map((parada) => ({ parada, posicao: projetarPonto(coordenadas, parada) }))
+  const paradasProjetadas = paradas.map((parada) => ({
+    parada,
+    posicao: projetarPonto(coordenadas, parada),
+    distanciaUsuario: distanciaMetros([localizacao.lng, localizacao.lat], [parada.lng, parada.lat]),
+  }))
     .filter((item) => item.posicao)
-    .sort((a, b) => a.posicao.distanciaMetros - b.posicao.distanciaMetros)[0];
+    .sort((a, b) => a.distanciaUsuario - b.distanciaUsuario);
+  const paradaMaisProxima = paradasProjetadas[0];
   if (!paradaMaisProxima) return { disponivel: false, motivo: "Nenhuma parada foi encontrada nesse sentido." };
+  const primeiraParada = [...paradasProjetadas].sort((a, b) => a.posicao.aoLongo - b.posicao.aoLongo)[0];
+  const paradaInicial = paradaMaisProxima.parada === primeiraParada?.parada;
 
-  const posicaoUsuario = projetarPonto(coordenadas, localizacao);
   const candidatos = (onibus || []).map((bus) => {
     const hora = Number(bus.hora);
     const sinalMs = Number.isFinite(hora) ? Math.max(0, agora - hora) : Infinity;
@@ -67,7 +73,10 @@ function estimarChegada({ rota, paradas, onibus, localizacao, agora = Date.now()
   if (!candidatos.length) {
     return {
       disponivel: false,
-      motivo: "Não há ônibus com sinal recente antes da parada escolhida.",
+      paradaInicial,
+      motivo: paradaInicial
+        ? "Esta é a parada inicial: os ônibus saem daqui."
+        : "Não há ônibus com sinal recente antes da parada escolhida; sem previsão por falta de sinal.",
       parada: paradaMaisProxima.parada,
       distanciaUsuarioMetros: Math.round(distanciaMetros(
         [localizacao.lng, localizacao.lat],

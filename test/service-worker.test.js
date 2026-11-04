@@ -40,8 +40,8 @@ test("service worker instala shell local com scripts, estilos, ícone e manifest
   listeners.install({ waitUntil: (promessa) => { aguardado = promessa; } });
   await aguardado;
   for (const arquivo of [
-    "/", "/app.js", "/app.js?v=pixel-brt-5", "/favoritos.js", "/map-match.js", "/map-match.js?v=pixel-brt-5",
-    "/styles.css", "/styles.css?v=pixel-brt-4", "/favicon-32.png", "/manifest.json",
+    "/", "/app.js", "/app.js?v=pixel-brt-6", "/favoritos.js", "/map-match.js", "/map-match.js?v=pixel-brt-5",
+    "/styles.css", "/styles.css?v=pixel-brt-6", "/favicon-32.png", "/manifest.json",
     "/favicon.ico", "/favicon-16.png", "/favicon-32.png", "/apple-touch-icon.png",
     "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon-maskable-192.png", "/icons/icon-maskable-512.png",
     "/logo-titulo-600.png", "/og-image.png",

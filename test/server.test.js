@@ -144,12 +144,63 @@ test("healthcheck e métricas retornam estado operacional", async () => {
     assert.equal(typeof dadosMetrics.cacheLinhas, "number");
     assert.equal(typeof dadosMetrics.gps.descartes, "object");
     assert.deepEqual(Object.keys(dadosMetrics.gps.associacaoSentido), [
+      "acumulados",
+      "ultimaConsulta",
+    ]);
+    assert.deepEqual(Object.keys(dadosMetrics.gps.associacaoSentido.acumulados), [
       "recebidos",
       "descartadosPorDistancia",
       "comSentidoPorRumo",
       "comSentidoPorMovimento",
       "indeterminados",
     ]);
+    assert.deepEqual(dadosMetrics.gps.associacaoSentido.ultimaConsulta, {
+      recebidos: 0,
+      descartadosPorDistancia: 0,
+      comSentidoPorRumo: 0,
+      comSentidoPorMovimento: 0,
+      indeterminados: 0,
+    });
+  });
+});
+
+test("/metrics distingue contadores acumulados e da última consulta", async () => {
+  const shape = [[-43.3, -22.9], [-43.1, -22.9]];
+  await comServidor({
+    buscarOnibus: async () => [{
+      ordem: "ULTIMA",
+      linha: "485",
+      lat: -22.9,
+      lng: -43.25,
+      directionId: "0",
+      rumo: null,
+      hora: Date.now(),
+    }],
+    buscarLinhaGtfs: () => ({
+      linha: "485",
+      variantes: [{ sentido: "0", tripIds: [], rota: { coordinates: shape }, paradas: [] }],
+    }),
+    metricsToken: "test-secret",
+  }, async (base) => {
+    const antes = await fetch(`${base}/metrics`, {
+      headers: { Authorization: "Bearer test-secret" },
+    }).then((resposta) => resposta.json());
+    await fetch(`${base}/api/onibus?linha=485`);
+    const depois = await fetch(`${base}/metrics`, {
+      headers: { Authorization: "Bearer test-secret" },
+    }).then((resposta) => resposta.json());
+    const contadores = depois.gps.associacaoSentido;
+    assert.deepEqual(contadores.ultimaConsulta, {
+      recebidos: 1,
+      descartadosPorDistancia: 0,
+      comSentidoPorRumo: 1,
+      comSentidoPorMovimento: 0,
+      indeterminados: 0,
+    });
+    assert.equal(
+      contadores.acumulados.recebidos - antes.gps.associacaoSentido.acumulados.recebidos,
+      1,
+    );
   });
 });
 
